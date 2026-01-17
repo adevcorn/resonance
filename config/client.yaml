@@ -1,0 +1,29 @@
+client:
+  server_url: "http://localhost:8080"
+  
+project:
+  auto_detect: true  # Auto-detect project root
+  
+permissions:
+  file:
+    allowed_paths:
+      - "."  # Project root
+    denied_paths:
+      - ".git"
+      - ".env"
+      - "node_modules"
+  exec:
+    allowed_commands:
+      - "go"
+      - "npm"
+      - "git"
+      - "make"
+    denied_commands:
+      - "rm -rf"
+      - "sudo"
+      
+mcp:
+  servers: []  # MCP server configurations
+  
+logging:
+  level: "info"
