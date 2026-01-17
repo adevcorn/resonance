@@ -7,16 +7,52 @@ Ensemble is a multi-agent developer tool where a coordinating agent dynamically 
 
 ## Project Status
 
-**Phase 1 - Week 1: COMPLETE ✓**
+**Phase 1: COMPLETE ✓**
 
-Week 1 deliverables (Project Setup) have been fully implemented:
-- ✓ Go module initialized
-- ✓ Complete directory structure
-- ✓ Core protocol types
-- ✓ Configuration system
-- ✓ Sample configuration files
-- ✓ Initial dependencies
-- ✓ Placeholder binaries
+All Phase 1 deliverables have been fully implemented:
+
+**Week 1 - Project Setup**: ✓ COMPLETE
+- Go module initialized
+- Complete directory structure
+- Core protocol types
+- Configuration system
+
+**Week 2 - LLM Providers**: ✓ COMPLETE
+- Provider interface
+- Anthropic provider with streaming
+- OpenAI provider with streaming
+- Provider registry
+
+**Week 3 - Agent System**: ✓ COMPLETE
+- Agent YAML loader
+- Agent pool management
+- Hot-reload watcher with fsnotify
+- 9 default agent definitions
+
+**Week 4 - Orchestration**: ✓ COMPLETE
+- Tool registry
+- Collaborate tool
+- Assemble team tool
+- Coordinator, Moderator, Synthesizer
+- Orchestration engine
+
+**Week 5 - Server**: ✓ COMPLETE
+- JSON storage
+- Session manager
+- HTTP API endpoints
+- WebSocket handler
+- Server binary
+
+**Week 6 - Client**: ✓ COMPLETE
+- Server connection (HTTP client)
+- WebSocket connection
+- Project detection
+- Permission system with sandboxing
+- Local tool executor
+- File tools (read, write, list)
+- Exec tools
+- CLI with all commands
+- Integration tests
 
 ## Architecture
 
@@ -96,15 +132,43 @@ go build -o bin/ensemble-server ./cmd/ensemble-server
 
 3. Update configurations as needed
 
-### Run (Coming Soon)
+### Usage
 
 ```bash
 # Start the server
 ./bin/ensemble-server
 
-# In another terminal, run a task
-./bin/ensemble run "implement feature X"
+# In another terminal, use the CLI client
+
+# View available agents
+./bin/ensemble agents list
+./bin/ensemble agents show developer
+
+# Run a task
+./bin/ensemble run "implement user authentication"
+
+# Manage sessions
+./bin/ensemble sessions list
+./bin/ensemble sessions show <session-id>
+./bin/ensemble sessions delete <session-id>
+
+# View configuration
+./bin/ensemble config
+
+# Show version
+./bin/ensemble version
 ```
+
+### CLI Commands
+
+- `ensemble run [task]` - Run a task with multi-agent collaboration
+- `ensemble agents list` - List all available agents
+- `ensemble agents show [name]` - Show detailed agent information
+- `ensemble sessions list` - List all sessions
+- `ensemble sessions show [id]` - Show session details
+- `ensemble sessions delete [id]` - Delete a session
+- `ensemble config` - Display current configuration
+- `ensemble version` - Display version information
 
 ## Development
 
@@ -121,11 +185,22 @@ Core dependencies:
 ### Build & Test
 
 ```bash
-# Build all packages
-go build ./...
+# Build both binaries
+make build
 
-# Run tests (coming soon)
+# Or build individually
+go build -o bin/ensemble ./cmd/ensemble
+go build -o bin/ensemble-server ./cmd/ensemble-server
+
+# Run all tests
 go test ./...
+
+# Run tests with coverage
+go test -cover ./...
+
+# Run specific test packages
+go test ./internal/client/...
+go test ./internal/server/...
 
 # Tidy dependencies
 go mod tidy
@@ -133,13 +208,15 @@ go mod tidy
 
 ## Implementation Roadmap
 
-### Phase 1: Core Foundation (Weeks 1-6)
-- [x] **Week 1**: Project setup, protocol types, configuration ✓
-- [ ] **Week 2**: LLM providers (Anthropic, OpenAI)
-- [ ] **Week 3**: Agent system with hot-reload
-- [ ] **Week 4**: Orchestration engine
-- [ ] **Week 5**: Server implementation
-- [ ] **Week 6**: Client CLI and integration
+### Phase 1: Core Foundation (Weeks 1-6) ✓ COMPLETE
+- [x] **Week 1**: Project setup, protocol types, configuration
+- [x] **Week 2**: LLM providers (Anthropic, OpenAI)
+- [x] **Week 3**: Agent system with hot-reload
+- [x] **Week 4**: Orchestration engine
+- [x] **Week 5**: Server implementation
+- [x] **Week 6**: Client CLI and integration
+
+**🎉 Phase 1 MVP is now complete and functional!**
 
 ### Phase 2: Enhanced Features (Weeks 7-10)
 - Google AI + Ollama providers
