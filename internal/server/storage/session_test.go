@@ -1,0 +1,144 @@
+package storage
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/adevcorn/ensemble/internal/protocol"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestSessionManager(t *testing.T) {
+	tmpDir := t.TempDir()
+	jsonStorage, err := NewJSONStorage(tmpDir)
+	require.NoError(t, err)
+
+	manager := NewSessionManager(jsonStorage)
+	ctx := context.Background()
+
+	t.Run("Create session", func(t *testing.T) {
+		session, err := manager.Create(ctx, "/test/project")
+		require.NoError(t, err)
+		assert.NotEmpty(t, session.ID)
+		assert.Equal(t, "/test/project", session.ProjectPath)
+		assert.Equal(t, protocol.SessionStateActive, session.State)
+		assert.NotZero(t, session.CreatedAt)
+		assert.NotZero(t, session.UpdatedAt)
+	})
+
+	t.Run("Get session", func(t *testing.T) {
+		created, err := manager.Create(ctx, "/test/project2")
+		require.NoError(t, err)
+
+		retrieved, err := manager.Get(ctx, created.ID)
+		require.NoError(t, err)
+		assert.Equal(t, created.ID, retrieved.ID)
+		assert.Equal(t, created.ProjectPath, retrieved.ProjectPath)
+	})
+
+	t.Run("Update session", func(t *testing.T) {
+		session, err := manager.Create(ctx, "/test/project3")
+		require.NoError(t, err)
+
+		// Modify session
+		session.State = protocol.SessionStateCompleted
+		session.ActiveTeam = []string{"coordinator", "developer"}
+
+		err = manager.Update(ctx, session)
+		require.NoError(t, err)
+
+		// Verify update
+		retrieved, err := manager.Get(ctx, session.ID)
+		require.NoError(t, err)
+		assert.Equal(t, protocol.SessionStateCompleted, retrieved.State)
+		assert.Equal(t, 2, len(retrieved.ActiveTeam))
+		assert.True(t, retrieved.UpdatedAt.After(session.CreatedAt))
+	})
+
+	t.Run("Delete session", func(t *testing.T) {
+		session, err := manager.Create(ctx, "/test/project4")
+		require.NoError(t, err)
+
+		err = manager.Delete(ctx, session.ID)
+		require.NoError(t, err)
+
+		_, err = manager.Get(ctx, session.ID)
+		assert.Error(t, err)
+	})
+
+	t.Run("List sessions", func(t *testing.T) {
+		// Create a few sessions
+		for i := 0; i < 3; i++ {
+			_, err := manager.Create(ctx, "/test/list")
+			require.NoError(t, err)
+		}
+
+		sessions, err := manager.List(ctx)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(sessions), 3)
+	})
+
+	t.Run("ListByProject", func(t *testing.T) {
+		// Create sessions for specific project
+		for i := 0; i < 2; i++ {
+			_, err := manager.Create(ctx, "/test/specific")
+			require.NoError(t, err)
+		}
+
+		sessions, err := manager.ListByProject(ctx, "/test/specific")
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(sessions), 2)
+	})
+
+	t.Run("AddMessage", func(t *testing.T) {
+		session, err := manager.Create(ctx, "/test/messages")
+		require.NoError(t, err)
+
+		message := protocol.Message{
+			ID:        "msg_1",
+			Role:      protocol.MessageRoleUser,
+			Content:   "Hello",
+			Timestamp: time.Now(),
+		}
+
+		err = manager.AddMessage(ctx, session.ID, message)
+		require.NoError(t, err)
+
+		// Verify message was added
+		retrieved, err := manager.Get(ctx, session.ID)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(retrieved.Messages))
+		assert.Equal(t, "Hello", retrieved.Messages[0].Content)
+		assert.Equal(t, session.ID, retrieved.Messages[0].SessionID)
+	})
+
+	t.Run("SetActiveTeam", func(t *testing.T) {
+		session, err := manager.Create(ctx, "/test/team")
+		require.NoError(t, err)
+
+		team := []string{"coordinator", "developer", "reviewer"}
+		err = manager.SetActiveTeam(ctx, session.ID, team)
+		require.NoError(t, err)
+
+		// Verify team was set
+		retrieved, err := manager.Get(ctx, session.ID)
+		require.NoError(t, err)
+		assert.Equal(t, 3, len(retrieved.ActiveTeam))
+		assert.Equal(t, "coordinator", retrieved.ActiveTeam[0])
+	})
+
+	t.Run("SetState", func(t *testing.T) {
+		session, err := manager.Create(ctx, "/test/state")
+		require.NoError(t, err)
+
+		err = manager.SetState(ctx, session.ID, protocol.SessionStateCompleted)
+		require.NoError(t, err)
+
+		// Verify state was set
+		retrieved, err := manager.Get(ctx, session.ID)
+		require.NoError(t, err)
+		assert.Equal(t, protocol.SessionStateCompleted, retrieved.State)
+	})
+}
