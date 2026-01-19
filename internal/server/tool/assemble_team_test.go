@@ -46,6 +46,14 @@ func createTestPool() *agent.Pool {
 				Provider: "mock",
 			},
 		},
+		{
+			Name:        "writer",
+			DisplayName: "Writer",
+			Description: "Documentation writer",
+			Model: protocol.ModelConfig{
+				Provider: "mock",
+			},
+		},
 	}
 
 	_ = pool.Load(definitions)
@@ -136,8 +144,9 @@ func TestAssembleTeamTool_ExecuteInvalidAgent(t *testing.T) {
 	err = json.Unmarshal(result, &output)
 	require.NoError(t, err)
 	assert.False(t, output.Success)
-	assert.Contains(t, output.Message, "Invalid agents")
+	assert.Contains(t, output.Message, "Team assembly failed")
 	assert.Contains(t, output.Message, "nonexistent")
+	assert.Contains(t, output.Message, "available agents")
 }
 
 func TestAssembleTeamTool_ExecuteEmptyAgents(t *testing.T) {
@@ -176,4 +185,31 @@ func TestAssembleTeamTool_ExecutionLocation(t *testing.T) {
 	pool := createTestPool()
 	tool := NewAssembleTeamTool(pool, nil)
 	assert.Equal(t, protocol.ExecutionLocationServer, tool.ExecutionLocation())
+}
+
+func TestAssembleTeamTool_ExecuteWithSuggestion(t *testing.T) {
+	pool := createTestPool()
+	tool := NewAssembleTeamTool(pool, nil)
+
+	// Try to use "documentation" agent which should suggest "writer"
+	input := AssembleTeamInput{
+		Agents: []string{"developer", "documentation"},
+		Reason: "Need developer and documentation support",
+	}
+	inputJSON, _ := json.Marshal(input)
+
+	ctx := context.Background()
+	result, err := tool.Execute(ctx, inputJSON)
+	require.NoError(t, err)
+
+	// Should return unsuccessful result with suggestion
+	var output AssembleTeamOutput
+	err = json.Unmarshal(result, &output)
+	require.NoError(t, err)
+	assert.False(t, output.Success)
+	assert.Contains(t, output.Message, "Team assembly failed")
+	assert.Contains(t, output.Message, "documentation")
+	// Should suggest "writer" as alternative
+	assert.Contains(t, output.Message, "writer")
+	assert.Contains(t, output.Message, "did you mean")
 }

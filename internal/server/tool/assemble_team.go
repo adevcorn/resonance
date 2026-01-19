@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/adevcorn/ensemble/internal/protocol"
 	"github.com/adevcorn/ensemble/internal/server/agent"
@@ -87,18 +88,22 @@ func (a *AssembleTeamTool) Execute(ctx context.Context, input json.RawMessage) (
 	}
 
 	// Validate that all requested agents exist in the pool
-	var invalidAgents []string
+	// Use pool.Get() to leverage smart suggestions
+	var errorMessages []string
 	for _, agentName := range teamInput.Agents {
-		if !a.pool.Has(agentName) {
-			invalidAgents = append(invalidAgents, agentName)
+		_, err := a.pool.Get(agentName)
+		if err != nil {
+			// Extract the helpful error message with suggestions
+			errorMessages = append(errorMessages, fmt.Sprintf("  • %s", err.Error()))
 		}
 	}
 
-	if len(invalidAgents) > 0 {
+	if len(errorMessages) > 0 {
+		message := "Team assembly failed due to invalid agent names:\n" + strings.Join(errorMessages, "\n")
 		output := AssembleTeamOutput{
 			Team:    nil,
 			Success: false,
-			Message: fmt.Sprintf("Invalid agents: %v. Available agents: %v", invalidAgents, a.pool.List()),
+			Message: message,
 		}
 		data, _ := json.Marshal(output)
 		return data, nil
