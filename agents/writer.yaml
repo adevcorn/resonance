@@ -134,8 +134,8 @@ capabilities:
   - clarity_improvement
 
 model:
-  provider: anthropic
-  name: claude-sonnet-4-20250514
+  provider: gemini
+  name: gemini-2.0-flash-exp
   temperature: 0.5
   max_tokens: 8192
 

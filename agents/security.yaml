@@ -113,8 +113,8 @@ capabilities:
   - security_education
 
 model:
-  provider: anthropic
-  name: claude-sonnet-4-20250514
+  provider: gemini
+  name: gemini-2.0-flash-exp
   temperature: 0.2
   max_tokens: 8192
 
