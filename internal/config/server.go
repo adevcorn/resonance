@@ -68,6 +68,8 @@ type ZaiProvider struct {
 type GeminiProvider struct {
 	APIKey       string `mapstructure:"api_key"`
 	DefaultModel string `mapstructure:"default_model"`
+	UseCLI       bool   `mapstructure:"use_cli"`    // Use Gemini CLI bridge instead of direct API
+	BridgeURL    string `mapstructure:"bridge_url"` // Node.js bridge URL (default: http://localhost:3001)
 }
 
 // OllamaProvider settings

@@ -115,7 +115,22 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	// Register Gemini provider if configured
-	if cfg.Providers.Gemini.APIKey != "" {
+	if cfg.Providers.Gemini.UseCLI {
+		// Use Gemini CLI bridge (Node.js)
+		bridgeURL := cfg.Providers.Gemini.BridgeURL
+		if bridgeURL == "" {
+			bridgeURL = "http://localhost:3001"
+		}
+
+		geminiProvider, err := gemini.NewCLIProvider(bridgeURL)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to initialize Gemini CLI provider")
+		} else {
+			registry.Register(geminiProvider)
+			log.Info().Str("bridge_url", bridgeURL).Msg("Gemini CLI provider registered")
+		}
+	} else if cfg.Providers.Gemini.APIKey != "" {
+		// Use direct SDK with API key
 		ctx := context.Background()
 		geminiProvider, err := gemini.NewProvider(ctx, cfg.Providers.Gemini.APIKey)
 		if err != nil {
