@@ -81,6 +81,12 @@ const server = createServer(async (req, res) => {
       try {
         const requestData = JSON.parse(body);
         
+        console.log('Received completion request:', {
+          model: requestData.model,
+          messageCount: requestData.messages?.length || 0,
+          toolCount: requestData.tools?.length || 0
+        });
+        
         // Handle streaming response
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
@@ -88,53 +94,87 @@ const server = createServer(async (req, res) => {
           'Connection': 'keep-alive'
         });
         
-        const result = await handleCompletion(requestData);
-        
-        // Stream text chunks
-        for await (const chunk of result.textStream) {
-          const event = {
-            type: 'content',
-            content: chunk,
-          };
-          res.write(`data: ${JSON.stringify(event)}\n\n`);
-        }
-        
-        // Stream tool calls
-        if (result.toolCalls) {
-          for await (const toolCall of result.toolCalls) {
+        try {
+          const result = await handleCompletion(requestData);
+          
+          // Stream text chunks
+          for await (const chunk of result.textStream) {
             const event = {
-              type: 'tool_call',
-              toolCall: {
-                id: toolCall.toolCallId,
-                toolName: toolCall.toolName,
-                arguments: toolCall.args
-              }
+              type: 'content',
+              content: chunk,
             };
             res.write(`data: ${JSON.stringify(event)}\n\n`);
           }
+          
+          // Stream tool calls
+          if (result.toolCalls) {
+            for await (const toolCall of result.toolCalls) {
+              const event = {
+                type: 'tool_call',
+                toolCall: {
+                  id: toolCall.toolCallId,
+                  toolName: toolCall.toolName,
+                  arguments: toolCall.args
+                }
+              };
+              res.write(`data: ${JSON.stringify(event)}\n\n`);
+            }
+          }
+          
+          // Send final usage stats
+          const usage = await result.usage;
+          const doneEvent = {
+            type: 'done',
+            usage: {
+              inputTokens: usage.promptTokens,
+              outputTokens: usage.completionTokens,
+              totalTokens: usage.totalTokens
+            }
+          };
+          res.write(`data: ${JSON.stringify(doneEvent)}\n\n`);
+          res.end();
+          
+        } catch (streamError) {
+          console.error('Error during streaming:', streamError);
+          
+          // Send error as SSE event
+          const errorMessage = streamError instanceof Error 
+            ? streamError.message 
+            : String(streamError);
+            
+          const errorEvent = {
+            type: 'error',
+            error: errorMessage
+          };
+          res.write(`data: ${JSON.stringify(errorEvent)}\n\n`);
+          res.end();
         }
         
-        // Send final usage stats
-        const usage = await result.usage;
-        const doneEvent = {
-          type: 'done',
-          usage: {
-            inputTokens: usage.promptTokens,
-            outputTokens: usage.completionTokens,
-            totalTokens: usage.totalTokens
-          }
-        };
-        res.write(`data: ${JSON.stringify(doneEvent)}\n\n`);
-        res.end();
-        
       } catch (error) {
-        console.error('Error handling completion:', error);
-        const errorEvent = {
-          type: 'error',
-          error: error.message
-        };
-        res.write(`data: ${JSON.stringify(errorEvent)}\n\n`);
-        res.end();
+        console.error('Error parsing request or initializing stream:', error);
+        
+        // Ensure error is properly serialized
+        const errorMessage = error instanceof Error 
+          ? error.message 
+          : (typeof error === 'string' ? error : JSON.stringify(error));
+        
+        // For errors before streaming starts, send HTTP error response
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: errorMessage,
+            type: error.name || 'Error',
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+          }));
+        } else {
+          // If headers already sent, send error as SSE
+          const errorEvent = {
+            type: 'error',
+            error: errorMessage
+          };
+          res.write(`data: ${JSON.stringify(errorEvent)}\n\n`);
+          res.end();
+        }
       }
     });
   } else if (req.method === 'GET' && req.url === '/health') {

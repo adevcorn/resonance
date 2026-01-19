@@ -136,7 +136,18 @@ func (p *CLIProvider) Stream(ctx context.Context, req *provider.CompletionReques
 	if resp.StatusCode != 200 {
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("gemini-cli: request failed with status %d: %s", resp.StatusCode, string(body))
+
+		// Try to parse as JSON error
+		var errResp struct {
+			Error string `json:"error"`
+			Type  string `json:"type"`
+		}
+		if err := json.Unmarshal(body, &errResp); err == nil && errResp.Error != "" {
+			return nil, fmt.Errorf("bridge error: %s", errResp.Error)
+		}
+
+		// Fallback to raw body
+		return nil, fmt.Errorf("bridge returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	eventChan := make(chan provider.StreamEvent, 10)
