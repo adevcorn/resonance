@@ -17,6 +17,7 @@ import (
 	"github.com/adevcorn/ensemble/internal/server/provider"
 	"github.com/adevcorn/ensemble/internal/server/provider/anthropic"
 	"github.com/adevcorn/ensemble/internal/server/provider/openai"
+	"github.com/adevcorn/ensemble/internal/server/provider/zai"
 	"github.com/adevcorn/ensemble/internal/server/storage"
 	"github.com/adevcorn/ensemble/internal/server/tool"
 	"github.com/rs/zerolog"
@@ -98,6 +99,20 @@ func runServer(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Register Zai provider if configured
+	if cfg.Providers.Zai.APIKey != "" {
+		zaiProvider, err := zai.NewProvider(zai.Config{
+			APIKey:  cfg.Providers.Zai.APIKey,
+			BaseURL: cfg.Providers.Zai.BaseURL,
+		})
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to initialize Zai provider")
+		} else {
+			registry.Register(zaiProvider)
+			log.Info().Msg("Zai provider registered")
+		}
+	}
+
 	if len(registry.List()) == 0 {
 		return fmt.Errorf("no LLM providers configured")
 	}
@@ -136,7 +151,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// 5. Setup tool registry
 	toolRegistry := tool.NewRegistry()
 
-	// Register collaborate tool (with no-op callback for now)
+	// Register collaborate tool
+	// Note: Actual handling done in orchestration engine's HandleCollaboration method
 	collaborateTool := tool.NewCollaborateTool(func(from string, input *protocol.CollaborateInput) error {
 		// This will be handled by the orchestration engine
 		return nil
@@ -150,7 +166,36 @@ func runServer(cmd *cobra.Command, args []string) error {
 	})
 	toolRegistry.Register(assembleTeamTool)
 
-	log.Info().Int("count", 2).Msg("Server tools registered")
+	// Register file system tools
+	// Use current working directory as base for file operations
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to get working directory, using '.'")
+		cwd = "."
+	}
+
+	readFileTool := tool.NewReadFileTool(cwd)
+	toolRegistry.Register(readFileTool)
+
+	// Register write_file as a client-side tool (executed on client, schema provided by server)
+	writeFileTool := tool.NewWriteFileTool()
+	toolRegistry.Register(writeFileTool)
+
+	// Register execute_command as a client-side tool
+	executeCommandTool := tool.NewExecuteCommandTool()
+	toolRegistry.Register(executeCommandTool)
+
+	listDirectoryTool := tool.NewListDirectoryTool(cwd)
+	toolRegistry.Register(listDirectoryTool)
+
+	// Register web tools
+	fetchURLTool := tool.NewFetchURLTool()
+	toolRegistry.Register(fetchURLTool)
+
+	webSearchTool := tool.NewWebSearchTool()
+	toolRegistry.Register(webSearchTool)
+
+	log.Info().Int("count", toolRegistry.Count()).Msg("Server tools registered")
 
 	// 6. Initialize storage
 	storagePath := cfg.Storage.Path
@@ -182,7 +227,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	log.Info().Msg("Orchestration engine created")
 
 	// 8. Create HTTP server
-	apiServer := api.NewServer(sessionManager, agentPool, engine)
+	apiServer := api.NewServer(sessionManager, agentPool, engine, toolRegistry)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	httpServer := &http.Server{
