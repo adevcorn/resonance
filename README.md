@@ -177,6 +177,49 @@ You can customize:
 - File and command permissions
 - Agent system prompts (edit `agents/*.yaml` - hot-reloads!)
 
+#### Gemini Provider Setup
+
+Ensemble supports **two authentication methods** for Google Gemini:
+
+**Option 1: API Key (Direct SDK)**
+```bash
+export GEMINI_API_KEY="..."  # Get from https://aistudio.google.com/apikey
+```
+
+**Option 2: OAuth via Gemini CLI (Recommended)**
+
+This option uses OAuth authentication through the Gemini CLI, allowing you to use your existing Gemini Code Assist subscription without managing API keys.
+
+```bash
+# 1. Install Gemini CLI globally
+npm install -g @google/gemini-cli
+
+# 2. Authenticate with Google (opens browser)
+gemini
+
+# 3. Install and start the Node.js bridge
+cd internal/server/provider/gemini/bridge
+npm install
+npm start  # Runs on port 3001
+
+# 4. Configure Ensemble to use CLI mode
+# Edit config/server.yaml:
+#   providers:
+#     gemini:
+#       use_cli: true
+#       bridge_url: "http://localhost:3001"
+
+# 5. Start Ensemble server (in another terminal)
+./bin/ensemble-server
+```
+
+**Benefits of CLI Mode:**
+- OAuth authentication (no API key management)
+- Use existing Gemini Code Assist subscription
+- Full feature access (streaming, tool calling)
+
+See `internal/server/provider/gemini/bridge/README.md` for detailed documentation.
+
 ### CLI Commands
 
 - `ensemble run [task]` - Run a task with multi-agent collaboration
