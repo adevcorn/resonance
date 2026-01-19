@@ -106,9 +106,10 @@ const server = createServer(async (req, res) => {
             res.write(`data: ${JSON.stringify(event)}\n\n`);
           }
           
-          // Stream tool calls
-          if (result.toolCalls) {
-            for await (const toolCall of result.toolCalls) {
+          // Get tool calls (it's a Promise, not an async iterable)
+          const toolCalls = await result.toolCalls;
+          if (toolCalls && toolCalls.length > 0) {
+            for (const toolCall of toolCalls) {
               const event = {
                 type: 'tool_call',
                 toolCall: {
