@@ -209,7 +209,15 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 		// Get the selected agent
 		selectedAgent, err := e.pool.Get(nextAgent)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get agent %s: %w", nextAgent, err)
+			// Send helpful error message to client before failing
+			if e.onMessage != nil {
+				_ = e.onMessage(protocol.Message{
+					Role:    protocol.MessageRoleAssistant,
+					Agent:   "system",
+					Content: fmt.Sprintf("❌ Error: %v\n\nThe orchestration tried to use an agent that doesn't exist. This is usually because the coordinator or an agent made a mistake in selecting team members.", err),
+				})
+			}
+			return nil, fmt.Errorf("invalid agent selection: %w", err)
 		}
 
 		// Build conversation context for this agent

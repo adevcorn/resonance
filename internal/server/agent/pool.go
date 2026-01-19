@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/adevcorn/ensemble/internal/protocol"
@@ -58,9 +59,72 @@ func (p *Pool) Get(name string) (*Agent, error) {
 
 	agent, ok := p.agents[name]
 	if !ok {
-		return nil, fmt.Errorf("agent %q not found", name)
+		// Try to find a similar agent name
+		suggestion := p.findSimilarAgent(name)
+		if suggestion != "" {
+			return nil, fmt.Errorf("agent %q not found - did you mean %q? Available agents: %v",
+				name, suggestion, p.listUnsafe())
+		}
+		return nil, fmt.Errorf("agent %q not found - available agents: %v", name, p.listUnsafe())
 	}
 	return agent, nil
+}
+
+// findSimilarAgent suggests an agent name based on common aliases or fuzzy matching
+// Must be called with read lock held
+func (p *Pool) findSimilarAgent(name string) string {
+	nameLower := strings.ToLower(name)
+
+	// Common aliases/mappings
+	aliases := map[string]string{
+		"documentation":    "writer",
+		"docs":             "writer",
+		"doc":              "writer",
+		"technical-writer": "writer",
+		"dev":              "developer",
+		"coder":            "developer",
+		"programmer":       "developer",
+		"ops":              "devops",
+		"deploy":           "devops",
+		"qa":               "tester",
+		"test":             "tester",
+		"testing":          "tester",
+		"code-review":      "reviewer",
+		"review":           "reviewer",
+		"sec":              "security",
+		"research":         "researcher",
+		"architect":        "architect",
+		"design":           "architect",
+	}
+
+	// Check aliases first
+	if suggestion, ok := aliases[nameLower]; ok {
+		// Verify the suggested agent actually exists
+		if _, exists := p.agents[suggestion]; exists {
+			return suggestion
+		}
+	}
+
+	// Fuzzy matching: check if any agent name contains the search term
+	// or if the search term contains an agent name
+	for agentName := range p.agents {
+		agentLower := strings.ToLower(agentName)
+		if strings.Contains(nameLower, agentLower) || strings.Contains(agentLower, nameLower) {
+			return agentName
+		}
+	}
+
+	return ""
+}
+
+// listUnsafe returns all agent names without locking (must be called with lock held)
+func (p *Pool) listUnsafe() []string {
+	names := make([]string, 0, len(p.agents))
+	for name := range p.agents {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // List returns all agent names, sorted alphabetically
