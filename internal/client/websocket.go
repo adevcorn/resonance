@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"sync"
 
 	"github.com/adevcorn/ensemble/internal/protocol"
@@ -178,9 +177,6 @@ func (ws *WebSocketConn) handleMessage(msg WSServerMessage) error {
 			return fmt.Errorf("failed to unmarshal tool call: %w", err)
 		}
 
-		fmt.Fprintf(os.Stderr, "[CLIENT] Received tool_call: %s (ID: %s, ServerSide: %v)\n",
-			payload.ToolName, payload.CallID, payload.ServerSide)
-
 		toolCall := protocol.ToolCall{
 			ID:        payload.CallID,
 			ToolName:  payload.ToolName,
@@ -189,7 +185,6 @@ func (ws *WebSocketConn) handleMessage(msg WSServerMessage) error {
 
 		if payload.ServerSide {
 			// Server-side tool - just notify for display, don't execute
-			fmt.Fprintf(os.Stderr, "[CLIENT] Server-side tool, storing for display\n")
 			if ws.onServerToolStart != nil {
 				if err := ws.onServerToolStart(toolCall); err != nil {
 					return err
@@ -201,18 +196,12 @@ func (ws *WebSocketConn) handleMessage(msg WSServerMessage) error {
 			ws.mu.Unlock()
 		} else {
 			// Client-side tool - execute and send result back
-			fmt.Fprintf(os.Stderr, "[CLIENT] Client-side tool, executing...\n")
 			if ws.onToolCall != nil {
 				result, err := ws.onToolCall(toolCall)
-				fmt.Fprintf(os.Stderr, "[CLIENT] Tool execution complete, sending result (err=%v)\n", err)
 				if err != nil {
-					sendErr := ws.SendToolResult(payload.CallID, nil, err)
-					fmt.Fprintf(os.Stderr, "[CLIENT] SendToolResult error case returned: %v\n", sendErr)
-					return sendErr
+					return ws.SendToolResult(payload.CallID, nil, err)
 				}
-				sendErr := ws.SendToolResult(payload.CallID, result.Result, nil)
-				fmt.Fprintf(os.Stderr, "[CLIENT] SendToolResult success case returned: %v\n", sendErr)
-				return sendErr
+				return ws.SendToolResult(payload.CallID, result.Result, nil)
 			}
 		}
 
@@ -272,8 +261,6 @@ func (ws *WebSocketConn) handleMessage(msg WSServerMessage) error {
 
 // SendToolResult sends a tool result back to the server
 func (ws *WebSocketConn) SendToolResult(callID string, result json.RawMessage, err error) error {
-	fmt.Fprintf(os.Stderr, "[CLIENT] SendToolResult called for callID: %s\n", callID)
-
 	payload := ToolResultPayload{
 		CallID: callID,
 		Result: result,
@@ -281,14 +268,9 @@ func (ws *WebSocketConn) SendToolResult(callID string, result json.RawMessage, e
 
 	if err != nil {
 		payload.Error = err.Error()
-		fmt.Fprintf(os.Stderr, "[CLIENT] SendToolResult with error: %v\n", err)
-	} else {
-		fmt.Fprintf(os.Stderr, "[CLIENT] SendToolResult with success, result len: %d\n", len(result))
 	}
 
-	sendErr := ws.send("tool_result", payload)
-	fmt.Fprintf(os.Stderr, "[CLIENT] ws.send returned: %v\n", sendErr)
-	return sendErr
+	return ws.send("tool_result", payload)
 }
 
 // Cancel cancels the current task

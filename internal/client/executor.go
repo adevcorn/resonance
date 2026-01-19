@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/adevcorn/ensemble/internal/client/tools"
 	"github.com/adevcorn/ensemble/internal/protocol"
@@ -57,15 +56,12 @@ func (e *Executor) Execute(ctx context.Context, call protocol.ToolCall) (protoco
 		}
 
 	case "execute_command":
-		fmt.Fprintf(os.Stderr, "[EXECUTOR] execute_command case hit\n")
 		output, err := e.executeCommand(ctx, call.Arguments)
-		fmt.Fprintf(os.Stderr, "[EXECUTOR] executeCommand returned: output len=%d, err=%v\n", len(output), err)
 		if err != nil {
 			result.Error = err.Error()
 		} else {
 			result.Result = output
 		}
-		fmt.Fprintf(os.Stderr, "[EXECUTOR] result.Result len=%d, result.Error=%s\n", len(result.Result), result.Error)
 
 	default:
 		result.Error = fmt.Sprintf("unknown tool: %s", call.ToolName)

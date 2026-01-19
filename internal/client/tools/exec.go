@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
@@ -26,8 +25,6 @@ type ExecuteCommandOutput struct {
 
 // ExecuteCommand runs a shell command
 func ExecuteCommand(ctx context.Context, projectPath string, input ExecuteCommandInput) (*ExecuteCommandOutput, error) {
-	fmt.Fprintf(os.Stderr, "[EXEC] Command: %s, Args: %v, Cwd: %s\n", input.Command, input.Args, input.Cwd)
-
 	// Determine working directory
 	cwd := projectPath
 	if input.Cwd != "" {
@@ -38,8 +35,6 @@ func ExecuteCommand(ctx context.Context, projectPath string, input ExecuteComman
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "[EXEC] Working directory: %s\n", cwd)
-
 	// Create command with timeout context
 	cmdCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -49,12 +44,10 @@ func ExecuteCommand(ctx context.Context, projectPath string, input ExecuteComman
 	var cmd *exec.Cmd
 	if len(input.Args) > 0 {
 		// If Args are provided, use them directly (legacy format)
-		fmt.Fprintf(os.Stderr, "[EXEC] Using args format: %s %v\n", input.Command, input.Args)
 		cmd = exec.CommandContext(cmdCtx, input.Command, input.Args...)
 	} else {
 		// Otherwise, execute the full command string through a shell
 		// This handles commands like "git status", "npm run build", etc.
-		fmt.Fprintf(os.Stderr, "[EXEC] Using shell format: sh -c '%s'\n", input.Command)
 		cmd = exec.CommandContext(cmdCtx, "sh", "-c", input.Command)
 	}
 	cmd.Dir = cwd
@@ -65,10 +58,7 @@ func ExecuteCommand(ctx context.Context, projectPath string, input ExecuteComman
 	cmd.Stderr = &stderr
 
 	// Run command
-	fmt.Fprintf(os.Stderr, "[EXEC] Running command...\n")
 	err := cmd.Run()
-	fmt.Fprintf(os.Stderr, "[EXEC] Command complete. Stdout len: %d, Stderr len: %d, Error: %v\n",
-		stdout.Len(), stderr.Len(), err)
 
 	output := &ExecuteCommandOutput{
 		Stdout:   stdout.String(),
@@ -85,9 +75,6 @@ func ExecuteCommand(ctx context.Context, projectPath string, input ExecuteComman
 			return nil, fmt.Errorf("command failed: %w", err)
 		}
 	}
-
-	fmt.Fprintf(os.Stderr, "[EXEC] Returning output: stdout=%d bytes, stderr=%d bytes, exitcode=%d\n",
-		len(output.Stdout), len(output.Stderr), output.ExitCode)
 
 	return output, nil
 }
