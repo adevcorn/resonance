@@ -45,7 +45,7 @@ func NewCLIProvider(bridgeURL string) (*CLIProvider, error) {
 
 // Name returns the provider name
 func (p *CLIProvider) Name() string {
-	return "gemini-cli"
+	return "gemini"
 }
 
 // SupportsTools indicates that Gemini CLI supports tool calling

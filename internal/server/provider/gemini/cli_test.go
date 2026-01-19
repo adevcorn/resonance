@@ -14,7 +14,7 @@ func TestCLIProvider_Name(t *testing.T) {
 	p := &CLIProvider{
 		bridgeURL: "http://localhost:3001",
 	}
-	assert.Equal(t, "gemini-cli", p.Name())
+	assert.Equal(t, "gemini", p.Name())
 }
 
 func TestCLIProvider_SupportsTools(t *testing.T) {
