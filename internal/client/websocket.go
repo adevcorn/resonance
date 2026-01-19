@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/adevcorn/ensemble/internal/protocol"
@@ -12,12 +13,15 @@ import (
 
 // WebSocketConn wraps a WebSocket connection to the server
 type WebSocketConn struct {
-	conn       *websocket.Conn
-	mu         sync.Mutex
-	onMessage  func(protocol.Message) error
-	onToolCall func(protocol.ToolCall) (protocol.ToolResult, error)
-	onComplete func(summary string, artifacts []string) error
-	onError    func(error) error
+	conn               *websocket.Conn
+	mu                 sync.Mutex
+	onMessage          func(protocol.Message) error
+	onToolCall         func(protocol.ToolCall) (protocol.ToolResult, error)
+	onServerToolStart  func(protocol.ToolCall) error
+	onServerToolEnd    func(protocol.ToolCall, protocol.ToolResult) error
+	onComplete         func(summary string, artifacts []string) error
+	onError            func(error) error
+	pendingServerTools map[string]protocol.ToolCall // Track server-side tool calls by ID
 }
 
 // WSClientMessage is a message from client to server
@@ -47,9 +51,10 @@ type AgentMessagePayload struct {
 
 // ToolCallPayload is the payload for tool calls
 type ToolCallPayload struct {
-	CallID    string          `json:"call_id"`
-	ToolName  string          `json:"tool_name"`
-	Arguments json.RawMessage `json:"arguments"`
+	CallID     string          `json:"call_id"`
+	ToolName   string          `json:"tool_name"`
+	Arguments  json.RawMessage `json:"arguments"`
+	ServerSide bool            `json:"server_side,omitempty"` // true if executed on server
 }
 
 // ToolResultPayload is the payload for tool results
@@ -73,7 +78,8 @@ type ErrorPayload struct {
 // NewWebSocketConn creates a new WebSocket connection wrapper
 func NewWebSocketConn(conn *websocket.Conn) *WebSocketConn {
 	return &WebSocketConn{
-		conn: conn,
+		conn:               conn,
+		pendingServerTools: make(map[string]protocol.ToolCall),
 	}
 }
 
@@ -91,6 +97,18 @@ func (ws *WebSocketConn) SetCallbacks(
 	ws.onToolCall = onToolCall
 	ws.onComplete = onComplete
 	ws.onError = onError
+}
+
+// SetServerToolCallbacks sets callbacks for server-side tool execution notifications
+func (ws *WebSocketConn) SetServerToolCallbacks(
+	onStart func(protocol.ToolCall) error,
+	onEnd func(protocol.ToolCall, protocol.ToolResult) error,
+) {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
+	ws.onServerToolStart = onStart
+	ws.onServerToolEnd = onEnd
 }
 
 // Start starts a task
@@ -160,18 +178,66 @@ func (ws *WebSocketConn) handleMessage(msg WSServerMessage) error {
 			return fmt.Errorf("failed to unmarshal tool call: %w", err)
 		}
 
-		if ws.onToolCall != nil {
-			toolCall := protocol.ToolCall{
-				ID:        payload.CallID,
-				ToolName:  payload.ToolName,
-				Arguments: payload.Arguments,
-			}
+		fmt.Fprintf(os.Stderr, "[CLIENT] Received tool_call: %s (ID: %s, ServerSide: %v)\n",
+			payload.ToolName, payload.CallID, payload.ServerSide)
 
-			result, err := ws.onToolCall(toolCall)
-			if err != nil {
-				return ws.SendToolResult(payload.CallID, nil, err)
+		toolCall := protocol.ToolCall{
+			ID:        payload.CallID,
+			ToolName:  payload.ToolName,
+			Arguments: payload.Arguments,
+		}
+
+		if payload.ServerSide {
+			// Server-side tool - just notify for display, don't execute
+			fmt.Fprintf(os.Stderr, "[CLIENT] Server-side tool, storing for display\n")
+			if ws.onServerToolStart != nil {
+				if err := ws.onServerToolStart(toolCall); err != nil {
+					return err
+				}
 			}
-			return ws.SendToolResult(payload.CallID, result.Result, nil)
+			// Store pending tool call to match with result later
+			ws.mu.Lock()
+			ws.pendingServerTools[payload.CallID] = toolCall
+			ws.mu.Unlock()
+		} else {
+			// Client-side tool - execute and send result back
+			fmt.Fprintf(os.Stderr, "[CLIENT] Client-side tool, executing...\n")
+			if ws.onToolCall != nil {
+				result, err := ws.onToolCall(toolCall)
+				fmt.Fprintf(os.Stderr, "[CLIENT] Tool execution complete, sending result (err=%v)\n", err)
+				if err != nil {
+					sendErr := ws.SendToolResult(payload.CallID, nil, err)
+					fmt.Fprintf(os.Stderr, "[CLIENT] SendToolResult error case returned: %v\n", sendErr)
+					return sendErr
+				}
+				sendErr := ws.SendToolResult(payload.CallID, result.Result, nil)
+				fmt.Fprintf(os.Stderr, "[CLIENT] SendToolResult success case returned: %v\n", sendErr)
+				return sendErr
+			}
+		}
+
+	case "tool_result":
+		// Server-side tool result notification
+		var payload ToolResultPayload
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			return fmt.Errorf("failed to unmarshal tool result: %w", err)
+		}
+
+		// Get the corresponding tool call
+		ws.mu.Lock()
+		toolCall, found := ws.pendingServerTools[payload.CallID]
+		delete(ws.pendingServerTools, payload.CallID)
+		ws.mu.Unlock()
+
+		if found && ws.onServerToolEnd != nil {
+			result := protocol.ToolResult{
+				CallID: payload.CallID,
+				Result: payload.Result,
+				Error:  payload.Error,
+			}
+			if err := ws.onServerToolEnd(toolCall, result); err != nil {
+				return err
+			}
 		}
 
 	case "complete":
@@ -206,6 +272,8 @@ func (ws *WebSocketConn) handleMessage(msg WSServerMessage) error {
 
 // SendToolResult sends a tool result back to the server
 func (ws *WebSocketConn) SendToolResult(callID string, result json.RawMessage, err error) error {
+	fmt.Fprintf(os.Stderr, "[CLIENT] SendToolResult called for callID: %s\n", callID)
+
 	payload := ToolResultPayload{
 		CallID: callID,
 		Result: result,
@@ -213,9 +281,14 @@ func (ws *WebSocketConn) SendToolResult(callID string, result json.RawMessage, e
 
 	if err != nil {
 		payload.Error = err.Error()
+		fmt.Fprintf(os.Stderr, "[CLIENT] SendToolResult with error: %v\n", err)
+	} else {
+		fmt.Fprintf(os.Stderr, "[CLIENT] SendToolResult with success, result len: %d\n", len(result))
 	}
 
-	return ws.send("tool_result", payload)
+	sendErr := ws.send("tool_result", payload)
+	fmt.Fprintf(os.Stderr, "[CLIENT] ws.send returned: %v\n", sendErr)
+	return sendErr
 }
 
 // Cancel cancels the current task

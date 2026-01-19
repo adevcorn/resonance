@@ -114,8 +114,13 @@ func (c *Checker) IsPathAllowed(path string) bool {
 
 // IsCommandAllowed checks if a command is allowed
 func (c *Checker) IsCommandAllowed(cmd string) bool {
-	// Extract base command (without path)
-	baseCmd := filepath.Base(cmd)
+	// Extract base command (first word of the command string)
+	// This handles both "git" and "git status" correctly
+	baseCmd := cmd
+	if idx := strings.Index(cmd, " "); idx > 0 {
+		baseCmd = cmd[:idx]
+	}
+	baseCmd = filepath.Base(baseCmd) // Remove path if present (e.g., "/usr/bin/git" -> "git")
 
 	// Check denied commands first
 	for _, denied := range c.config.Exec.DeniedCommands {
