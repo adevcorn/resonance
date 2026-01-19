@@ -2,10 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/adevcorn/ensemble/internal/protocol"
+	"github.com/adevcorn/ensemble/internal/server/orchestration"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
@@ -46,9 +49,10 @@ type AgentMessagePayload struct {
 
 // ToolCallPayload is the payload for "tool_call" events
 type ToolCallPayload struct {
-	CallID    string          `json:"call_id"`
-	ToolName  string          `json:"tool_name"`
-	Arguments json.RawMessage `json:"arguments"`
+	CallID     string          `json:"call_id"`
+	ToolName   string          `json:"tool_name"`
+	Arguments  json.RawMessage `json:"arguments"`
+	ServerSide bool            `json:"server_side,omitempty"` // true if executed on server
 }
 
 // ToolResultPayload is the payload for "tool_result" messages from client
@@ -94,6 +98,10 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Handle WebSocket communication
 	ctx := r.Context()
 
+	// Track pending tool calls
+	pendingToolCalls := make(map[string]chan protocol.ToolResult)
+	var pendingMu sync.Mutex
+
 	for {
 		var msg WSClientMessage
 		if err := conn.ReadJSON(&msg); err != nil {
@@ -118,14 +126,119 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 			log.Info().Str("session_id", sessionID).Str("task", start.Task).Msg("Starting task")
 
-			// Run orchestration
-			// Note: This is a simplified version. In production, we'd need to:
-			// 1. Stream agent messages to client via "agent_message" events
-			// 2. Send tool calls to client via "tool_call" events
-			// 3. Wait for "tool_result" messages from client
-			// 4. Handle cancellation
+			// Create a per-session engine with streaming callbacks
+			sessionEngine, err := orchestration.NewEngine(
+				s.agentPool,
+				s.registry,
+				func(msg protocol.Message) error {
+					// Stream agent messages to client
+					return conn.WriteJSON(WSServerMessage{
+						Type: "agent_message",
+						Payload: AgentMessagePayload{
+							Agent:     msg.Agent,
+							Content:   msg.Content,
+							Timestamp: msg.Timestamp,
+						},
+					})
+				},
+				func(call protocol.ToolCall) (protocol.ToolResult, error) {
+					// Send tool call to client
+					log.Debug().
+						Str("call_id", call.ID).
+						Str("tool_name", call.ToolName).
+						Msg("Sending client-side tool call")
 
-			result, err := s.engine.Run(ctx, start.Task, start.ProjectInfo)
+					if err := conn.WriteJSON(WSServerMessage{
+						Type: "tool_call",
+						Payload: ToolCallPayload{
+							CallID:    call.ID,
+							ToolName:  call.ToolName,
+							Arguments: call.Arguments,
+						},
+					}); err != nil {
+						return protocol.ToolResult{}, err
+					}
+
+					// Create channel for this tool call result
+					resultChan := make(chan protocol.ToolResult, 1)
+
+					// Register pending tool call
+					pendingMu.Lock()
+					pendingToolCalls[call.ID] = resultChan
+					log.Debug().
+						Str("call_id", call.ID).
+						Int("pending_count", len(pendingToolCalls)).
+						Msg("Registered pending tool call")
+					pendingMu.Unlock()
+
+					// Wait for client to send tool_result message
+					select {
+					case result := <-resultChan:
+						// Clean up
+						pendingMu.Lock()
+						delete(pendingToolCalls, call.ID)
+						pendingMu.Unlock()
+
+						// Check if result has error
+						if result.Error != "" {
+							return protocol.ToolResult{}, fmt.Errorf("tool execution failed: %s", result.Error)
+						}
+						return result, nil
+
+					case <-ctx.Done():
+						// Clean up on context cancellation
+						pendingMu.Lock()
+						delete(pendingToolCalls, call.ID)
+						pendingMu.Unlock()
+						return protocol.ToolResult{}, ctx.Err()
+
+					case <-time.After(120 * time.Second):
+						// Clean up on timeout (increased to 120s for complex multi-tool operations)
+						pendingMu.Lock()
+						delete(pendingToolCalls, call.ID)
+						pendingMu.Unlock()
+						log.Warn().
+							Str("call_id", call.ID).
+							Str("tool_name", call.ToolName).
+							Msg("Tool execution timeout - removed from pending calls")
+						return protocol.ToolResult{}, fmt.Errorf("tool execution timeout")
+					}
+				},
+			)
+			sessionEngine.SetServerToolCallbacks(
+				// onServerToolStart - notify client that server tool is starting
+				func(agentName string, toolCall protocol.ToolCall) error {
+					return conn.WriteJSON(WSServerMessage{
+						Type: "tool_call",
+						Payload: ToolCallPayload{
+							CallID:     toolCall.ID,
+							ToolName:   toolCall.ToolName,
+							Arguments:  toolCall.Arguments,
+							ServerSide: true,
+						},
+					})
+				},
+				// onServerToolEnd - notify client of server tool result
+				func(agentName string, toolCall protocol.ToolCall, result protocol.ToolResult) error {
+					return conn.WriteJSON(WSServerMessage{
+						Type: "tool_result",
+						Payload: ToolResultPayload{
+							CallID: result.CallID,
+							Result: result.Result,
+							Error:  result.Error,
+						},
+					})
+				},
+			)
+			if err != nil {
+				sendError(conn, "Failed to create engine: "+err.Error())
+				session.State = protocol.SessionStateError
+				_ = s.sessionManager.Update(ctx, session)
+				continue
+			}
+
+			// Run orchestration with streaming
+			result, err := sessionEngine.Run(ctx, start.Task, start.ProjectInfo)
 			if err != nil {
 				sendError(conn, "Orchestration failed: "+err.Error())
 				session.State = protocol.SessionStateError
@@ -151,8 +264,47 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			_ = s.sessionManager.Update(ctx, session)
 
 		case "tool_result":
-			// TODO: Handle tool results
-			log.Warn().Msg("Tool result handling not yet implemented")
+			var result ToolResultPayload
+			if err := json.Unmarshal(msg.Payload, &result); err != nil {
+				sendError(conn, "Invalid tool result payload")
+				continue
+			}
+
+			log.Debug().
+				Str("call_id", result.CallID).
+				Str("error", result.Error).
+				Msg("Received tool result from client")
+
+			// Find the pending tool call and send result
+			pendingMu.Lock()
+			resultChan, exists := pendingToolCalls[result.CallID]
+			if !exists {
+				// Log all pending call IDs to help debug
+				pendingIDs := make([]string, 0, len(pendingToolCalls))
+				for id := range pendingToolCalls {
+					pendingIDs = append(pendingIDs, id)
+				}
+				pendingMu.Unlock()
+				log.Warn().
+					Str("call_id", result.CallID).
+					Strs("pending_calls", pendingIDs).
+					Msg("Received result for unknown tool call")
+				continue
+			}
+			pendingMu.Unlock()
+
+			// Send result to waiting goroutine
+			select {
+			case resultChan <- protocol.ToolResult{
+				CallID: result.CallID,
+				Result: result.Result,
+				Error:  result.Error,
+			}:
+				// Successfully delivered
+			default:
+				// Channel was already closed or full (shouldn't happen with buffered channel)
+				log.Warn().Str("call_id", result.CallID).Msg("Failed to deliver tool result")
+			}
 
 		case "cancel":
 			log.Info().Str("session_id", sessionID).Msg("Task cancelled by client")
