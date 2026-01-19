@@ -16,6 +16,7 @@ import (
 	"github.com/adevcorn/ensemble/internal/server/orchestration"
 	"github.com/adevcorn/ensemble/internal/server/provider"
 	"github.com/adevcorn/ensemble/internal/server/provider/anthropic"
+	"github.com/adevcorn/ensemble/internal/server/provider/gemini"
 	"github.com/adevcorn/ensemble/internal/server/provider/openai"
 	"github.com/adevcorn/ensemble/internal/server/provider/zai"
 	"github.com/adevcorn/ensemble/internal/server/storage"
@@ -110,6 +111,18 @@ func runServer(cmd *cobra.Command, args []string) error {
 		} else {
 			registry.Register(zaiProvider)
 			log.Info().Msg("Zai provider registered")
+		}
+	}
+
+	// Register Gemini provider if configured
+	if cfg.Providers.Gemini.APIKey != "" {
+		ctx := context.Background()
+		geminiProvider, err := gemini.NewProvider(ctx, cfg.Providers.Gemini.APIKey)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to initialize Gemini provider")
+		} else {
+			registry.Register(geminiProvider)
+			log.Info().Msg("Gemini provider registered")
 		}
 	}
 

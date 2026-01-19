@@ -41,7 +41,7 @@ type ProvidersSettings struct {
 	Anthropic AnthropicProvider `mapstructure:"anthropic"`
 	OpenAI    OpenAIProvider    `mapstructure:"openai"`
 	Zai       ZaiProvider       `mapstructure:"zai"`
-	Google    GoogleProvider    `mapstructure:"google"`
+	Gemini    GeminiProvider    `mapstructure:"gemini"`
 	Ollama    OllamaProvider    `mapstructure:"ollama"`
 }
 
@@ -64,8 +64,8 @@ type ZaiProvider struct {
 	DefaultModel string `mapstructure:"default_model"`
 }
 
-// GoogleProvider settings
-type GoogleProvider struct {
+// GeminiProvider settings
+type GeminiProvider struct {
 	APIKey       string `mapstructure:"api_key"`
 	DefaultModel string `mapstructure:"default_model"`
 }

@@ -64,6 +64,7 @@ All Phase 1 deliverables have been fully implemented and tested:
 
 **Post-Phase 1 - Additional Providers**: ✓ COMPLETE
 - Z.ai provider integration (GLM models with OpenAI-compatible API)
+- Google Gemini provider integration (Gemini 2.0 models with tool calling)
 - Full tool calling and streaming support
 
 ## Architecture
@@ -80,7 +81,7 @@ Ensemble uses a **client-server architecture**:
 ✅ **Bidirectional Tool Execution**: File/exec operations on client, full result propagation to agents
 ✅ **Real-time Streaming**: Agent messages and tool calls stream in real-time via WebSocket
 ✅ **Hot-Reloading Agents**: YAML agent definitions reload automatically on change
-✅ **Multi-Provider Support**: OpenAI, Anthropic, and Z.ai (GLM models) - Google AI and Ollama planned for Phase 2
+✅ **Multi-Provider Support**: OpenAI, Anthropic, Z.ai (GLM models), and Google Gemini - Ollama planned for Phase 2
 ✅ **Permission System**: Sandboxed tool execution with path validation and command allowlists
 ✅ **Session Management**: Persistent sessions with complete conversation history
 
@@ -118,8 +119,14 @@ ensemble/
 **The easiest way to get started:**
 
 ```bash
-# 1. Set your API key
-export ANTHROPIC_API_KEY="sk-ant-..."  # Get from https://console.anthropic.com/
+# 1. Set your API key (choose one provider)
+export ANTHROPIC_API_KEY="sk-ant-..."     # Get from https://console.anthropic.com/
+# OR
+export OPENAI_API_KEY="sk-..."            # Get from https://platform.openai.com/
+# OR
+export GEMINI_API_KEY="..."               # Get from https://aistudio.google.com/apikey
+# OR
+export ZAI_API_KEY="..."                  # Get from https://open.bigmodel.cn/
 
 # 2. Run the interactive setup
 ./start.sh
@@ -165,7 +172,7 @@ Default configurations are in `config/`:
 - `config/client.yaml` - Client permissions and settings
 
 You can customize:
-- LLM provider and model (Anthropic or OpenAI)
+- LLM provider and model (Anthropic, OpenAI, Z.ai, or Google Gemini)
 - Temperature settings per agent
 - File and command permissions
 - Agent system prompts (edit `agents/*.yaml` - hot-reloads!)
