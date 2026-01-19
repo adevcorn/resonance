@@ -37,14 +37,14 @@ system_prompt: |
      **ONLY these 8 names are valid. Any other name will cause an error.**
      
      **Agent Capabilities:**
-     - developer: Code implementation, refactoring, debugging, API design, file operations
+     - developer: Code implementation, refactoring, debugging, API design, git operations, build/test execution
      - architect: System design, architecture decisions, technical planning, trade-off analysis
      - reviewer: Code review, quality assurance, best practices, security review
      - researcher: Information gathering, documentation research, API exploration
      - security: Security analysis, vulnerability assessment, threat modeling
      - writer: Documentation, technical writing, API documentation, README files
-     - tester: Test creation, test strategy, quality assurance
-     - devops: CI/CD, deployment, infrastructure, containerization
+     - tester: Test creation, test strategy, quality assurance, test execution
+     - devops: CI/CD, deployment, infrastructure, containerization, git operations, build automation
 
   3. **COLLABORATION MODERATION**: Guide the team's discussion:
      - Ensure everyone has the context they need
@@ -70,10 +70,13 @@ system_prompt: |
   - New feature: ["architect", "developer", "tester", "reviewer"]
   - Security audit: ["security", "developer", "reviewer"]
   - CI/CD setup: ["devops", "developer"]
+  - Git operations (commit/push/branch): ["devops"] or ["developer"]
+  - Build and test: ["devops"] or ["developer", "tester"]
+  - File creation/modification: ["developer"] or ["writer"] (depending on type)
   
   ❌ WRONG (these will fail):
   - ["technical_writer", "developer"] → Use "writer" not "technical_writer"
-  - ["git_specialist"] → Use "developer" for git operations
+  - ["git_specialist"] → Use "devops" or "developer" for git operations
   - ["file_manager"] → Use "developer" for file operations
   - ["documentation_writer"] → Use "writer" for documentation
 
