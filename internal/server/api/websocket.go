@@ -237,31 +237,33 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// Run orchestration with streaming
-			result, err := sessionEngine.Run(ctx, start.Task, start.ProjectInfo)
-			if err != nil {
-				sendError(conn, "Orchestration failed: "+err.Error())
-				session.State = protocol.SessionStateError
+			// Run orchestration in goroutine to avoid blocking message loop
+			go func() {
+				result, err := sessionEngine.Run(ctx, start.Task, start.ProjectInfo)
+				if err != nil {
+					sendError(conn, "Orchestration failed: "+err.Error())
+					session.State = protocol.SessionStateError
+					_ = s.sessionManager.Update(ctx, session)
+					return
+				}
+
+				// Send completion
+				if err := conn.WriteJSON(WSServerMessage{
+					Type: "complete",
+					Payload: CompletePayload{
+						Summary:   result.Summary,
+						Artifacts: result.Artifacts,
+					},
+				}); err != nil {
+					log.Error().Err(err).Msg("Failed to send complete message")
+					return
+				}
+
+				// Update session
+				session.State = protocol.SessionStateCompleted
+				session.Messages = result.Messages
 				_ = s.sessionManager.Update(ctx, session)
-				continue
-			}
-
-			// Send completion
-			if err := conn.WriteJSON(WSServerMessage{
-				Type: "complete",
-				Payload: CompletePayload{
-					Summary:   result.Summary,
-					Artifacts: result.Artifacts,
-				},
-			}); err != nil {
-				log.Error().Err(err).Msg("Failed to send complete message")
-				return
-			}
-
-			// Update session
-			session.State = protocol.SessionStateCompleted
-			session.Messages = result.Messages
-			_ = s.sessionManager.Update(ctx, session)
+			}()
 
 		case "tool_result":
 			var result ToolResultPayload

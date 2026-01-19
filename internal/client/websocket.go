@@ -199,9 +199,16 @@ func (ws *WebSocketConn) handleMessage(msg WSServerMessage) error {
 			if ws.onToolCall != nil {
 				result, err := ws.onToolCall(toolCall)
 				if err != nil {
-					return ws.SendToolResult(payload.CallID, nil, err)
+					if sendErr := ws.SendToolResult(payload.CallID, nil, err); sendErr != nil {
+						// Log error but don't exit message loop
+						return fmt.Errorf("failed to send tool error result: %w", sendErr)
+					}
+				} else {
+					if sendErr := ws.SendToolResult(payload.CallID, result.Result, nil); sendErr != nil {
+						// Log error but don't exit message loop
+						return fmt.Errorf("failed to send tool result: %w", sendErr)
+					}
 				}
-				return ws.SendToolResult(payload.CallID, result.Result, nil)
 			}
 		}
 
