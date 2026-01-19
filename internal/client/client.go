@@ -222,9 +222,9 @@ func (c *Client) ConnectWebSocket(ctx context.Context, sessionID string) (*WebSo
 	}
 
 	// Build WebSocket URL
-	wsURL := fmt.Sprintf("ws://%s/api/sessions/%s/run", u.Host, sessionID)
+	wsURL := fmt.Sprintf("ws://%s/api/sessions/%s/ws", u.Host, sessionID)
 	if u.Scheme == "https" {
-		wsURL = fmt.Sprintf("wss://%s/api/sessions/%s/run", u.Host, sessionID)
+		wsURL = fmt.Sprintf("wss://%s/api/sessions/%s/ws", u.Host, sessionID)
 	}
 
 	// Connect to WebSocket

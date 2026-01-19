@@ -1,4 +1,4 @@
-package openai
+package zai
 
 import (
 	"context"
@@ -12,34 +12,53 @@ import (
 	"github.com/openai/openai-go/option"
 )
 
-// Provider implements the provider.Provider interface for OpenAI
+const (
+	// DefaultBaseURL is the default API endpoint for z.ai
+	DefaultBaseURL = "https://api.z.ai/v1"
+)
+
+// Provider implements the provider.Provider interface for z.ai (GLM models)
 type Provider struct {
-	client *openai.Client
-	apiKey string
+	client  *openai.Client
+	apiKey  string
+	baseURL string
 }
 
-// NewProvider creates a new OpenAI provider
-func NewProvider(apiKey string) (*Provider, error) {
-	if apiKey == "" {
-		return nil, fmt.Errorf("openai: API key is required")
+// Config contains configuration for the Zai provider
+type Config struct {
+	APIKey  string
+	BaseURL string // Optional, defaults to DefaultBaseURL
+}
+
+// NewProvider creates a new z.ai provider
+func NewProvider(cfg Config) (*Provider, error) {
+	if cfg.APIKey == "" {
+		return nil, fmt.Errorf("zai: API key is required")
+	}
+
+	baseURL := cfg.BaseURL
+	if baseURL == "" {
+		baseURL = DefaultBaseURL
 	}
 
 	client := openai.NewClient(
-		option.WithAPIKey(apiKey),
+		option.WithAPIKey(cfg.APIKey),
+		option.WithBaseURL(baseURL),
 	)
 
 	return &Provider{
-		client: client,
-		apiKey: apiKey,
+		client:  client,
+		apiKey:  cfg.APIKey,
+		baseURL: baseURL,
 	}, nil
 }
 
 // Name returns the provider name
 func (p *Provider) Name() string {
-	return "openai"
+	return "zai"
 }
 
-// SupportsTools indicates that OpenAI supports tool calling
+// SupportsTools indicates that z.ai supports tool calling
 func (p *Provider) SupportsTools() bool {
 	return true
 }
@@ -48,7 +67,7 @@ func (p *Provider) SupportsTools() bool {
 func (p *Provider) Complete(ctx context.Context, req *provider.CompletionRequest) (*provider.CompletionResponse, error) {
 	messages, err := convertMessages(req.Messages)
 	if err != nil {
-		return nil, fmt.Errorf("openai: failed to convert messages: %w", err)
+		return nil, fmt.Errorf("zai: failed to convert messages: %w", err)
 	}
 
 	tools := convertTools(req.Tools)
@@ -66,7 +85,7 @@ func (p *Provider) Complete(ctx context.Context, req *provider.CompletionRequest
 
 	completion, err := p.client.Chat.Completions.New(ctx, params)
 	if err != nil {
-		return nil, fmt.Errorf("openai: completion failed: %w", err)
+		return nil, fmt.Errorf("zai: completion failed: %w", err)
 	}
 
 	return convertResponse(completion)
@@ -76,7 +95,7 @@ func (p *Provider) Complete(ctx context.Context, req *provider.CompletionRequest
 func (p *Provider) Stream(ctx context.Context, req *provider.CompletionRequest) (<-chan provider.StreamEvent, error) {
 	messages, err := convertMessages(req.Messages)
 	if err != nil {
-		return nil, fmt.Errorf("openai: failed to convert messages: %w", err)
+		return nil, fmt.Errorf("zai: failed to convert messages: %w", err)
 	}
 
 	tools := convertTools(req.Tools)
@@ -285,7 +304,7 @@ func convertTools(tools []protocol.ToolDefinition) []openai.ChatCompletionToolPa
 // convertResponse converts an OpenAI completion to a CompletionResponse
 func convertResponse(completion *openai.ChatCompletion) (*provider.CompletionResponse, error) {
 	if len(completion.Choices) == 0 {
-		return nil, fmt.Errorf("openai: no choices in completion response")
+		return nil, fmt.Errorf("zai: no choices in completion response")
 	}
 
 	choice := completion.Choices[0]

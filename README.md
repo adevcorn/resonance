@@ -7,9 +7,9 @@ Ensemble is a multi-agent developer tool where a coordinating agent dynamically 
 
 ## Project Status
 
-**Phase 1: COMPLETE ✓**
+**Phase 1: COMPLETE ✓** (January 17, 2026)
 
-All Phase 1 deliverables have been fully implemented:
+All Phase 1 deliverables have been fully implemented and tested:
 
 **Week 1 - Project Setup**: ✓ COMPLETE
 - Go module initialized
@@ -40,12 +40,12 @@ All Phase 1 deliverables have been fully implemented:
 - JSON storage
 - Session manager
 - HTTP API endpoints
-- WebSocket handler
+- WebSocket handler with streaming
 - Server binary
 
 **Week 6 - Client**: ✓ COMPLETE
 - Server connection (HTTP client)
-- WebSocket connection
+- WebSocket connection with bidirectional tool execution
 - Project detection
 - Permission system with sandboxing
 - Local tool executor
@@ -54,6 +54,18 @@ All Phase 1 deliverables have been fully implemented:
 - CLI with all commands
 - Integration tests
 
+**Post-Phase 1 - Tool Execution**: ✓ COMPLETE
+- WebSocket connection fix (URL mismatch resolved)
+- Per-session orchestration engines
+- Bidirectional tool execution flow
+- Real-time agent message streaming
+- Tool result propagation with timeout handling
+- End-to-end working system
+
+**Post-Phase 1 - Additional Providers**: ✓ COMPLETE
+- Z.ai provider integration (GLM models with OpenAI-compatible API)
+- Full tool calling and streaming support
+
 ## Architecture
 
 Ensemble uses a **client-server architecture**:
@@ -61,13 +73,16 @@ Ensemble uses a **client-server architecture**:
 - **Server**: Central backend managing agent orchestration, LLM provider communication, and session management
 - **Client**: CLI tool that connects to the server and executes local tools (file operations, command execution) within the user's project
 
-### Key Features (Planned)
+### Key Features
 
-- **Dynamic Team Assembly**: Coordinator AI analyzes tasks and selects the right specialists
-- **Free-Form Collaboration**: Agents discuss naturally with shared context, coordinator moderates
-- **Hybrid Tool Execution**: File/exec operations on client, search/fetch on server
-- **Hot-Reloading Agents**: YAML agent definitions reload automatically on change
-- **Multi-Provider Support**: OpenAI, Anthropic, Google AI, Ollama
+✅ **Dynamic Team Assembly**: Coordinator AI analyzes tasks and selects the right specialists
+✅ **Free-Form Collaboration**: Agents discuss naturally with shared context, coordinator moderates
+✅ **Bidirectional Tool Execution**: File/exec operations on client, full result propagation to agents
+✅ **Real-time Streaming**: Agent messages and tool calls stream in real-time via WebSocket
+✅ **Hot-Reloading Agents**: YAML agent definitions reload automatically on change
+✅ **Multi-Provider Support**: OpenAI, Anthropic, and Z.ai (GLM models) - Google AI and Ollama planned for Phase 2
+✅ **Permission System**: Sandboxed tool execution with path validation and command allowlists
+✅ **Session Management**: Persistent sessions with complete conversation history
 
 ## Project Structure
 
@@ -100,64 +115,60 @@ ensemble/
 
 ## Quick Start
 
-### Prerequisites
-
-- Go 1.23 or later
-- API keys for LLM providers (Anthropic, OpenAI, etc.)
-
-### Build
+**The easiest way to get started:**
 
 ```bash
-# Build both binaries
-go build -o bin/ensemble ./cmd/ensemble
-go build -o bin/ensemble-server ./cmd/ensemble-server
+# 1. Set your API key
+export ANTHROPIC_API_KEY="sk-ant-..."  # Get from https://console.anthropic.com/
 
-# Or use make (coming soon)
+# 2. Run the interactive setup
+./start.sh
 ```
 
-### Configuration
+### Manual Setup
 
-1. Copy sample configurations:
-   ```bash
-   cp config/server.yaml config/server.local.yaml
-   cp config/client.yaml config/client.local.yaml
-   ```
-
-2. Set environment variables:
-   ```bash
-   export ANTHROPIC_API_KEY="your-key"
-   export OPENAI_API_KEY="your-key"
-   export GOOGLE_AI_API_KEY="your-key"
-   ```
-
-3. Update configurations as needed
-
-### Usage
+If you prefer manual setup:
 
 ```bash
-# Start the server
+# 1. Build the binaries
+make build
+
+# 2. Start the server (in one terminal)
 ./bin/ensemble-server
 
-# In another terminal, use the CLI client
+# 3. Run a task (in another terminal)
+./bin/ensemble run "analyze this project and tell me what it does"
+```
 
+### Example Commands
+
+```bash
 # View available agents
 ./bin/ensemble agents list
 ./bin/ensemble agents show developer
 
-# Run a task
-./bin/ensemble run "implement user authentication"
+# Run tasks
+./bin/ensemble run "review the project structure"
+./bin/ensemble run "write a README explaining the architecture"
+./bin/ensemble run "identify files that need unit tests"
 
 # Manage sessions
 ./bin/ensemble sessions list
 ./bin/ensemble sessions show <session-id>
 ./bin/ensemble sessions delete <session-id>
-
-# View configuration
-./bin/ensemble config
-
-# Show version
-./bin/ensemble version
 ```
+
+### Configuration
+
+Default configurations are in `config/`:
+- `config/server.yaml` - Server settings
+- `config/client.yaml` - Client permissions and settings
+
+You can customize:
+- LLM provider and model (Anthropic or OpenAI)
+- Temperature settings per agent
+- File and command permissions
+- Agent system prompts (edit `agents/*.yaml` - hot-reloads!)
 
 ### CLI Commands
 

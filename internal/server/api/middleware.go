@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -127,6 +129,15 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 		rw.statusCode = http.StatusOK
 	}
 	return rw.ResponseWriter.Write(b)
+}
+
+// Hijack implements http.Hijacker interface for WebSocket support
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := rw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return hijacker.Hijack()
 }
 
 // Error wraps an error response

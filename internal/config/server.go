@@ -40,6 +40,7 @@ type AgentsSettings struct {
 type ProvidersSettings struct {
 	Anthropic AnthropicProvider `mapstructure:"anthropic"`
 	OpenAI    OpenAIProvider    `mapstructure:"openai"`
+	Zai       ZaiProvider       `mapstructure:"zai"`
 	Google    GoogleProvider    `mapstructure:"google"`
 	Ollama    OllamaProvider    `mapstructure:"ollama"`
 }
@@ -53,6 +54,13 @@ type AnthropicProvider struct {
 // OpenAIProvider settings
 type OpenAIProvider struct {
 	APIKey       string `mapstructure:"api_key"`
+	DefaultModel string `mapstructure:"default_model"`
+}
+
+// ZaiProvider settings
+type ZaiProvider struct {
+	APIKey       string `mapstructure:"api_key"`
+	BaseURL      string `mapstructure:"base_url"`
 	DefaultModel string `mapstructure:"default_model"`
 }
 

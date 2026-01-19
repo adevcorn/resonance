@@ -83,7 +83,7 @@ func setupTestServer(t *testing.T) *Server {
 	require.NoError(t, err)
 
 	// Create server
-	return NewServer(sessionManager, agentPool, engine)
+	return NewServer(sessionManager, agentPool, engine, toolRegistry)
 }
 
 func TestSessionEndpoints(t *testing.T) {

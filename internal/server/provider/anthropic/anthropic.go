@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/adevcorn/ensemble/internal/protocol"
 	"github.com/adevcorn/ensemble/internal/server/provider"
@@ -103,6 +105,10 @@ func (p *Provider) Stream(ctx context.Context, req *provider.CompletionRequest) 
 		var currentToolCalls []protocol.ToolCall
 		var usage provider.Usage
 
+		// Map content block index to tool call index
+		// Anthropic uses content block index (includes text blocks), we need tool call index
+		contentBlockIndexToToolIndex := make(map[int]int)
+
 		for stream.Next() {
 			event := stream.Current()
 
@@ -116,13 +122,42 @@ func (p *Provider) Stream(ctx context.Context, req *provider.CompletionRequest) 
 							Content: textDelta.Text,
 							Done:    false,
 						}
+					} else if inputJSONDelta, ok := delta.(anthropic.InputJSONDelta); ok {
+						// Accumulate tool call arguments
+						contentBlockIdx := int(event.Index)
+
+						// Map content block index to tool call index
+						toolIdx, exists := contentBlockIndexToToolIndex[contentBlockIdx]
+						if !exists {
+							fmt.Fprintf(os.Stderr, "[DEBUG] WARNING: no tool mapping for content block index %d\n", contentBlockIdx)
+							continue
+						}
+
+						fmt.Fprintf(os.Stderr, "[DEBUG] InputJSONDelta for content block %d (tool idx %d): %q\n",
+							contentBlockIdx, toolIdx, inputJSONDelta.PartialJSON)
+
+						if toolIdx >= 0 && toolIdx < len(currentToolCalls) {
+							currentToolCalls[toolIdx].Arguments = append(
+								currentToolCalls[toolIdx].Arguments,
+								[]byte(inputJSONDelta.PartialJSON)...,
+							)
+						} else {
+							fmt.Fprintf(os.Stderr, "[DEBUG] WARNING: tool index %d out of range (len: %d)\n", toolIdx, len(currentToolCalls))
+						}
 					}
 				}
 
 			case anthropic.ContentBlockStartEvent:
 				if block := event.ContentBlock.AsUnion(); block != nil {
 					if toolUse, ok := block.(anthropic.ToolUseBlock); ok {
-						// Tool use started
+						// Tool use started - record the mapping from content block index to tool index
+						contentBlockIndex := int(event.Index)
+						toolIndex := len(currentToolCalls)
+						contentBlockIndexToToolIndex[contentBlockIndex] = toolIndex
+
+						fmt.Fprintf(os.Stderr, "[DEBUG] Tool use started: %s (ID: %s, content block idx: %d, tool idx: %d)\n",
+							toolUse.Name, toolUse.ID, contentBlockIndex, toolIndex)
+
 						currentToolCalls = append(currentToolCalls, protocol.ToolCall{
 							ID:       toolUse.ID,
 							ToolName: toolUse.Name,
@@ -135,6 +170,7 @@ func (p *Provider) Stream(ctx context.Context, req *provider.CompletionRequest) 
 				if len(currentToolCalls) > 0 {
 					// Send tool call event
 					for _, tc := range currentToolCalls {
+						fmt.Fprintf(os.Stderr, "[DEBUG] Sending tool call: %s (ID: %s, args len: %d)\n", tc.ToolName, tc.ID, len(tc.Arguments))
 						eventChan <- provider.StreamEvent{
 							Type:     provider.StreamEventToolCall,
 							ToolCall: &tc,
@@ -177,6 +213,9 @@ func (p *Provider) Stream(ctx context.Context, req *provider.CompletionRequest) 
 func convertMessages(messages []protocol.Message) ([]anthropic.MessageParam, error) {
 	var result []anthropic.MessageParam
 
+	// Track skipped tool call IDs to skip corresponding results
+	skippedToolCalls := make(map[string]bool)
+
 	for _, msg := range messages {
 		// Skip system messages - they should be handled separately
 		if msg.Role == protocol.MessageRoleSystem {
@@ -190,14 +229,28 @@ func convertMessages(messages []protocol.Message) ([]anthropic.MessageParam, err
 			// Message with tool calls - these should be assistant messages
 			var contentBlocks []anthropic.ContentBlockParamUnion
 
-			if msg.Content != "" {
-				contentBlocks = append(contentBlocks, anthropic.NewTextBlock(msg.Content))
+			// Trim whitespace from content to avoid Anthropic API errors
+			trimmedContent := strings.TrimSpace(msg.Content)
+			if trimmedContent != "" {
+				contentBlocks = append(contentBlocks, anthropic.NewTextBlock(trimmedContent))
 			}
 
 			for _, tc := range msg.ToolCalls {
+				// Skip tool calls with empty arguments
+				if len(tc.Arguments) == 0 {
+					fmt.Fprintf(os.Stderr, "[DEBUG] Skipping tool call %s (tool: %s): empty arguments\n", tc.ID, tc.ToolName)
+					skippedToolCalls[tc.ID] = true
+					continue
+				}
+
+				// Try to unmarshal arguments - skip if invalid
 				var input map[string]interface{}
 				if err := json.Unmarshal(tc.Arguments, &input); err != nil {
-					return nil, fmt.Errorf("failed to unmarshal tool call arguments: %w", err)
+					// Skip tool calls with malformed JSON instead of failing the entire request
+					// This can happen when agents create invalid tool calls
+					fmt.Fprintf(os.Stderr, "[DEBUG] Skipping tool call %s (tool: %s): invalid JSON: %v (args: %q)\n", tc.ID, tc.ToolName, err, string(tc.Arguments))
+					skippedToolCalls[tc.ID] = true
+					continue
 				}
 
 				contentBlocks = append(contentBlocks, anthropic.ToolUseBlockParam{
@@ -217,6 +270,12 @@ func convertMessages(messages []protocol.Message) ([]anthropic.MessageParam, err
 			var contentBlocks []anthropic.ContentBlockParamUnion
 
 			for _, tr := range msg.ToolResults {
+				// Skip tool results for skipped tool calls
+				if skippedToolCalls[tr.CallID] {
+					fmt.Fprintf(os.Stderr, "[DEBUG] Skipping tool result for skipped call %s\n", tr.CallID)
+					continue
+				}
+
 				var content string
 				if tr.Error != "" {
 					content = fmt.Sprintf("Error: %s", tr.Error)
@@ -227,12 +286,23 @@ func convertMessages(messages []protocol.Message) ([]anthropic.MessageParam, err
 				contentBlocks = append(contentBlocks, anthropic.NewToolResultBlock(tr.CallID, content, false))
 			}
 
-			result = append(result, anthropic.NewUserMessage(contentBlocks...))
+			// Only add the message if there are content blocks
+			if len(contentBlocks) > 0 {
+				result = append(result, anthropic.NewUserMessage(contentBlocks...))
+			}
 		} else {
 			// Regular text message
+			// Trim whitespace to avoid Anthropic API errors about trailing whitespace
+			trimmedContent := strings.TrimSpace(msg.Content)
+
+			// Skip empty messages (after trimming)
+			if trimmedContent == "" {
+				continue
+			}
+
 			result = append(result, anthropic.MessageParam{
 				Role:    anthropic.F(role),
-				Content: anthropic.F([]anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(msg.Content)}),
+				Content: anthropic.F([]anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(trimmedContent)}),
 			})
 		}
 	}

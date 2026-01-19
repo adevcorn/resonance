@@ -6,6 +6,7 @@ import (
 	"github.com/adevcorn/ensemble/internal/server/agent"
 	"github.com/adevcorn/ensemble/internal/server/orchestration"
 	"github.com/adevcorn/ensemble/internal/server/storage"
+	"github.com/adevcorn/ensemble/internal/server/tool"
 	"github.com/gorilla/mux"
 )
 
@@ -15,6 +16,7 @@ type Server struct {
 	sessionManager *storage.SessionManager
 	agentPool      *agent.Pool
 	engine         *orchestration.Engine
+	registry       *tool.Registry
 }
 
 // NewServer creates a new API server
@@ -22,12 +24,14 @@ func NewServer(
 	sessionManager *storage.SessionManager,
 	agentPool *agent.Pool,
 	engine *orchestration.Engine,
+	registry *tool.Registry,
 ) *Server {
 	s := &Server{
 		router:         mux.NewRouter(),
 		sessionManager: sessionManager,
 		agentPool:      agentPool,
 		engine:         engine,
+		registry:       registry,
 	}
 
 	s.SetupRoutes()

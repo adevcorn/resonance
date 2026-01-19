@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/adevcorn/ensemble/internal/protocol"
@@ -30,6 +31,7 @@ func (m *Moderator) SelectNextAgent(
 	team []string,
 	messages []protocol.Message,
 	task string,
+	pendingCollaboration map[string][]string,
 ) (string, error) {
 	// If no messages yet, coordinator starts
 	if len(messages) == 0 {
@@ -39,6 +41,14 @@ func (m *Moderator) SelectNextAgent(
 	// Check if task is complete (look for "complete" action in recent messages)
 	if m.isTaskComplete(messages) {
 		return "complete", nil
+	}
+
+	// Priority 1: Agents with pending collaboration requests should respond next
+	for _, agent := range team {
+		if requesters, hasPending := pendingCollaboration[agent]; hasPending && len(requesters) > 0 {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Moderator: Prioritizing %s (has pending collaboration from %v)\n", agent, requesters)
+			return agent, nil
+		}
 	}
 
 	// Count agent contributions

@@ -17,6 +17,10 @@ providers:
   openai:
     api_key: "${OPENAI_API_KEY}"
     default_model: "gpt-4o"
+  zai:
+    api_key: "${ZAI_API_KEY}"
+    base_url: "https://api.z.ai/v1"  # Optional, defaults to this value
+    default_model: "glm-4"
   google:
     api_key: "${GOOGLE_AI_API_KEY}"
     default_model: "gemini-1.5-pro"
