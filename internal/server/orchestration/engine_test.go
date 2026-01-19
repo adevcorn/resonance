@@ -89,7 +89,7 @@ func createTestEngine() (*Engine, *agent.Pool, *tool.Registry, error) {
 	toolRegistry := tool.NewRegistry()
 
 	// Register collaborate tool
-	collaborateTool := tool.NewCollaborateTool(func(from string, input *protocol.CollaborateInput) error {
+	collaborateTool := tool.NewCollaborateTool(pool, func(from string, input *protocol.CollaborateInput) error {
 		// Just accept all collaborations in tests
 		return nil
 	})

@@ -11,17 +11,17 @@ import (
 )
 
 func TestCollaborateTool_Name(t *testing.T) {
-	tool := NewCollaborateTool(nil)
+	tool := NewCollaborateTool(nil, nil)
 	assert.Equal(t, "collaborate", tool.Name())
 }
 
 func TestCollaborateTool_Description(t *testing.T) {
-	tool := NewCollaborateTool(nil)
+	tool := NewCollaborateTool(nil, nil)
 	assert.NotEmpty(t, tool.Description())
 }
 
 func TestCollaborateTool_Parameters(t *testing.T) {
-	tool := NewCollaborateTool(nil)
+	tool := NewCollaborateTool(nil, nil)
 	params := tool.Parameters()
 	assert.NotNil(t, params)
 
@@ -48,7 +48,7 @@ func TestCollaborateTool_ExecuteBroadcast(t *testing.T) {
 		return nil
 	}
 
-	tool := NewCollaborateTool(onMessage)
+	tool := NewCollaborateTool(nil, onMessage)
 
 	input := protocol.CollaborateInput{
 		Action:  protocol.CollaborateBroadcast,
@@ -81,7 +81,7 @@ func TestCollaborateTool_ExecuteDirect(t *testing.T) {
 		return nil
 	}
 
-	tool := NewCollaborateTool(onMessage)
+	tool := NewCollaborateTool(nil, onMessage)
 
 	input := protocol.CollaborateInput{
 		Action:  protocol.CollaborateDirect,
@@ -106,7 +106,7 @@ func TestCollaborateTool_ExecuteDirect(t *testing.T) {
 }
 
 func TestCollaborateTool_ExecuteDirectMissingToAgent(t *testing.T) {
-	tool := NewCollaborateTool(nil)
+	tool := NewCollaborateTool(nil, nil)
 
 	input := protocol.CollaborateInput{
 		Action:  protocol.CollaborateDirect,
@@ -129,7 +129,7 @@ func TestCollaborateTool_ExecuteComplete(t *testing.T) {
 		return nil
 	}
 
-	tool := NewCollaborateTool(onMessage)
+	tool := NewCollaborateTool(nil, onMessage)
 
 	input := protocol.CollaborateInput{
 		Action:    protocol.CollaborateComplete,
@@ -154,7 +154,7 @@ func TestCollaborateTool_ExecuteComplete(t *testing.T) {
 }
 
 func TestCollaborateTool_ExecuteEmptyMessage(t *testing.T) {
-	tool := NewCollaborateTool(nil)
+	tool := NewCollaborateTool(nil, nil)
 
 	input := protocol.CollaborateInput{
 		Action:  protocol.CollaborateBroadcast,
@@ -169,7 +169,7 @@ func TestCollaborateTool_ExecuteEmptyMessage(t *testing.T) {
 }
 
 func TestCollaborateTool_ExecuteInvalidAction(t *testing.T) {
-	tool := NewCollaborateTool(nil)
+	tool := NewCollaborateTool(nil, nil)
 
 	input := map[string]interface{}{
 		"action":  "invalid_action",
@@ -183,7 +183,50 @@ func TestCollaborateTool_ExecuteInvalidAction(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid action")
 }
 
+func TestCollaborateTool_ExecuteInvalidTargetAgent(t *testing.T) {
+	pool := createTestPool() // Reuse the test pool from assemble_team_test.go
+
+	tool := NewCollaborateTool(pool, nil)
+
+	// Try to send message to non-existent agent
+	input := protocol.CollaborateInput{
+		Action:  protocol.CollaborateDirect,
+		Message: "Can you help?",
+		ToAgent: "requirements-engineer", // Invalid agent name
+	}
+	inputJSON, _ := json.Marshal(input)
+
+	ctx := context.Background()
+	_, err := tool.Execute(ctx, inputJSON)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid target agent")
+	assert.Contains(t, err.Error(), "requirements-engineer")
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestCollaborateTool_ExecuteInvalidTargetAgentWithSuggestion(t *testing.T) {
+	pool := createTestPool() // Has "writer" agent
+
+	tool := NewCollaborateTool(pool, nil)
+
+	// Try to collaborate with "documentation" which should suggest "writer"
+	input := protocol.CollaborateInput{
+		Action:  protocol.CollaborateHelp,
+		Message: "Need help writing docs",
+		ToAgent: "documentation", // Should suggest "writer"
+	}
+	inputJSON, _ := json.Marshal(input)
+
+	ctx := context.Background()
+	_, err := tool.Execute(ctx, inputJSON)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid target agent")
+	assert.Contains(t, err.Error(), "documentation")
+	assert.Contains(t, err.Error(), "did you mean")
+	assert.Contains(t, err.Error(), "writer")
+}
+
 func TestCollaborateTool_ExecutionLocation(t *testing.T) {
-	tool := NewCollaborateTool(nil)
+	tool := NewCollaborateTool(nil, nil)
 	assert.Equal(t, protocol.ExecutionLocationServer, tool.ExecutionLocation())
 }

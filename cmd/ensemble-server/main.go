@@ -153,7 +153,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	// Register collaborate tool
 	// Note: Actual handling done in orchestration engine's HandleCollaboration method
-	collaborateTool := tool.NewCollaborateTool(func(from string, input *protocol.CollaborateInput) error {
+	collaborateTool := tool.NewCollaborateTool(agentPool, func(from string, input *protocol.CollaborateInput) error {
 		// This will be handled by the orchestration engine
 		return nil
 	})

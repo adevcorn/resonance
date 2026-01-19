@@ -6,16 +6,19 @@ import (
 	"fmt"
 
 	"github.com/adevcorn/ensemble/internal/protocol"
+	"github.com/adevcorn/ensemble/internal/server/agent"
 )
 
 // CollaborateTool enables agent-to-agent communication
 type CollaborateTool struct {
+	pool      *agent.Pool
 	onMessage func(from string, input *protocol.CollaborateInput) error
 }
 
 // NewCollaborateTool creates a new collaborate tool
-func NewCollaborateTool(onMessage func(string, *protocol.CollaborateInput) error) *CollaborateTool {
+func NewCollaborateTool(pool *agent.Pool, onMessage func(string, *protocol.CollaborateInput) error) *CollaborateTool {
 	return &CollaborateTool{
+		pool:      pool,
 		onMessage: onMessage,
 	}
 }
@@ -77,6 +80,14 @@ func (c *CollaborateTool) Execute(ctx context.Context, input json.RawMessage) (j
 	case protocol.CollaborateDirect, protocol.CollaborateHelp:
 		if colInput.ToAgent == "" {
 			return nil, fmt.Errorf("to_agent is required for %s action", colInput.Action)
+		}
+		// Validate that the target agent exists
+		if c.pool != nil {
+			_, err := c.pool.Get(colInput.ToAgent)
+			if err != nil {
+				// Return error with smart suggestion
+				return nil, fmt.Errorf("invalid target agent: %w", err)
+			}
 		}
 	case protocol.CollaborateComplete:
 		// No additional validation needed
