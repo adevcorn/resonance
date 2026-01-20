@@ -114,18 +114,24 @@ const server = createServer(async (req, res) => {
         try {
           const result = await handleCompletion(requestData);
           
+          let chunkCount = 0;
           // Stream text chunks
           for await (const chunk of result.textStream) {
+            chunkCount++;
             const event = {
               type: 'content',
               content: chunk,
             };
+            console.log(`Streaming chunk ${chunkCount}:`, chunk.substring(0, 50));
             res.write(`data: ${JSON.stringify(event)}\n\n`);
           }
+          
+          console.log(`Streamed ${chunkCount} text chunks`);
           
           // Get tool calls (it's a Promise, not an async iterable)
           const toolCalls = await result.toolCalls;
           if (toolCalls && toolCalls.length > 0) {
+            console.log(`Sending ${toolCalls.length} tool calls`);
             for (const toolCall of toolCalls) {
               const event = {
                 type: 'tool_call',
