@@ -134,7 +134,7 @@ const server = createServer(async (req, res) => {
             console.log(`Sending ${toolCalls.length} tool calls:`);
             for (const toolCall of toolCalls) {
               console.log(`  - ${toolCall.toolName} (id: ${toolCall.toolCallId})`);
-              const argsStr = JSON.stringify(toolCall.args);
+              const argsStr = JSON.stringify(toolCall.args || {});
               console.log(`    args:`, argsStr.substring(0, Math.min(100, argsStr.length)));
               
               const event = {
