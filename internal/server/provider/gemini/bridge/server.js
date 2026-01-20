@@ -38,7 +38,8 @@ async function handleCompletion(requestBody) {
   const formattedTools = tools ? tools.reduce((acc, tool) => {
     acc[tool.name] = {
       description: tool.description,
-      parameters: JSON.parse(tool.parameters || '{}')
+      // Parameters is already an object when sent from Go (json.RawMessage unmarshals)
+      parameters: tool.parameters || {}
     };
     return acc;
   }, {}) : undefined;
