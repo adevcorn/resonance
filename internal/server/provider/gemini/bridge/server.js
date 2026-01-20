@@ -141,8 +141,8 @@ const server = createServer(async (req, res) => {
                 type: 'tool_call',
                 toolCall: {
                   id: toolCall.toolCallId,
-                  toolName: toolCall.toolName,
-                  arguments: toolCall.args
+                  tool_name: toolCall.toolName,  // Use snake_case to match Go struct tag
+                  arguments: toolCall.args || {}
                 }
               };
               res.write(`data: ${JSON.stringify(event)}\n\n`);
