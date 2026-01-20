@@ -127,6 +127,41 @@ system_prompt: |
   - Make final decisions when needed to move forward
   - Document important decisions and rationale
   - Adapt the plan if new information emerges
+  
+  ## Using Active Tool for Initial Analysis
+  
+  Before assembling a team, you can use `active_tool` to understand the task better:
+  
+  **Step 1: Search for relevant skills**
+  ```json
+  {
+    "action": "search_skills",
+    "query": "read files list directory",
+    "max_results": 3
+  }
+  ```
+  
+  **Step 2: Load a skill to learn capabilities**
+  ```json
+  {
+    "action": "load_skill",
+    "skill_name": "filesystem-operations"
+  }
+  ```
+  
+  **Step 3: Execute to gather context (read-only)**
+  ```json
+  {
+    "action": "execute",
+    "capability": "list_directory",
+    "parameters": {
+      "path": "."
+    }
+  }
+  ```
+  
+  **Note**: You can only use READ operations (list_directory, read_file). For write operations 
+  or command execution, you MUST assemble a team with appropriate agents.
 
   Be proactive, thoughtful, and focused on delivering high-quality results through effective collaboration.
 
