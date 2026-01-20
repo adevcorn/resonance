@@ -205,6 +205,15 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					}
 				},
 			)
+
+			// Check for engine creation error before using it
+			if err != nil {
+				sendError(conn, "Failed to create engine: "+err.Error())
+				session.State = protocol.SessionStateError
+				_ = s.sessionManager.Update(ctx, session)
+				continue
+			}
+
 			sessionEngine.SetServerToolCallbacks(
 				// onServerToolStart - notify client that server tool is starting
 				func(agentName string, toolCall protocol.ToolCall) error {
@@ -230,12 +239,6 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					})
 				},
 			)
-			if err != nil {
-				sendError(conn, "Failed to create engine: "+err.Error())
-				session.State = protocol.SessionStateError
-				_ = s.sessionManager.Update(ctx, session)
-				continue
-			}
 
 			// Run orchestration in goroutine to avoid blocking message loop
 			go func() {
