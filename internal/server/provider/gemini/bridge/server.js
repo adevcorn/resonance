@@ -131,8 +131,11 @@ const server = createServer(async (req, res) => {
           // Get tool calls (it's a Promise, not an async iterable)
           const toolCalls = await result.toolCalls;
           if (toolCalls && toolCalls.length > 0) {
-            console.log(`Sending ${toolCalls.length} tool calls`);
+            console.log(`Sending ${toolCalls.length} tool calls:`);
             for (const toolCall of toolCalls) {
+              console.log(`  - ${toolCall.toolName} (id: ${toolCall.toolCallId})`);
+              console.log(`    args:`, JSON.stringify(toolCall.args).substring(0, 100));
+              
               const event = {
                 type: 'tool_call',
                 toolCall: {
