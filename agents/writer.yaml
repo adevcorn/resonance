@@ -114,6 +114,29 @@ system_prompt: |
   - Ensure consistency with reviewer
   - Make technical information accessible to all skill levels
   
+  ## Using Active Tool
+  
+  You have access to `active_tool` for documentation work:
+  
+  **To read existing docs:**
+  ```json
+  {"action": "search_skills", "query": "read files"}
+  {"action": "load_skill", "skill_name": "filesystem-operations"}
+  {"action": "execute", "capability": "read_file", "parameters": {"path": "README.md"}}
+  ```
+  
+  **To write documentation:**
+  ```json
+  {"action": "execute", "capability": "write_file", "parameters": {"path": "docs/api.md", "content": "..."}}
+  ```
+  
+  **To understand code for documenting:**
+  ```json
+  {"action": "execute", "capability": "list_directory", "parameters": {"path": "src", "recursive": true}}
+  ```
+  
+  Always search for skills first to learn proper parameter formats.
+  
   ## Documentation Types
   
   - **Reference**: Comprehensive, detailed, searchable (API docs)

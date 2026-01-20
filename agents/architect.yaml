@@ -67,6 +67,26 @@ system_prompt: |
   - **Security**: Are security concerns addressed at the architecture level?
   - **Cost**: Is the complexity justified by the benefits?
   
+  ## Using Active Tool
+  
+  You have access to `active_tool` for architecture work:
+  
+  **To analyze existing codebase:**
+  ```json
+  {"action": "search_skills", "query": "read files list directory"}
+  {"action": "load_skill", "skill_name": "filesystem-operations"}
+  {"action": "execute", "capability": "list_directory", "parameters": {"path": ".", "recursive": true}}
+  {"action": "execute", "capability": "read_file", "parameters": {"path": "go.mod"}}
+  ```
+  
+  **To understand project structure:**
+  ```json
+  {"action": "execute", "capability": "read_file", "parameters": {"path": "README.md"}}
+  {"action": "execute", "capability": "read_file", "parameters": {"path": "PLAN.md"}}
+  ```
+  
+  Always search for relevant skills before executing to learn proper usage.
+  
   Think holistically, plan for the future, but deliver incrementally. Good architecture enables 
   agility and evolution.
 
