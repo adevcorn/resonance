@@ -265,16 +265,20 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 		var contentBuilder strings.Builder
 		var toolCalls []protocol.ToolCall
 		var inputTokens, outputTokens int
-		var lastEvent *provider.StreamEvent
+		var usage *provider.Usage
 
 		for event := range eventChan {
-			lastEvent = &event
 			switch event.Type {
 			case provider.StreamEventContent:
 				contentBuilder.WriteString(event.Content)
 			case provider.StreamEventToolCall:
 				if event.ToolCall != nil {
 					toolCalls = append(toolCalls, *event.ToolCall)
+				}
+			case provider.StreamEventDone:
+				// Capture usage from the done event
+				if event.Usage != nil {
+					usage = event.Usage
 				}
 			case provider.StreamEventError:
 				return nil, fmt.Errorf("stream error from agent %s: %w", nextAgent, event.Error)
@@ -291,10 +295,10 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 			Timestamp: time.Now(),
 		}
 
-		// Attach token usage from usage event
-		if lastEvent != nil && lastEvent.Usage != nil {
-			inputTokens = lastEvent.Usage.InputTokens
-			outputTokens = lastEvent.Usage.OutputTokens
+		// Attach token usage from done event
+		if usage != nil {
+			inputTokens = usage.InputTokens
+			outputTokens = usage.OutputTokens
 
 			agentMsg.Metadata = map[string]any{
 				"tokens": map[string]int{
