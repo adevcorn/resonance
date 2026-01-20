@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/adevcorn/ensemble/internal/server/metrics"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
@@ -44,6 +45,8 @@ func loggingMiddleware(next http.Handler) http.Handler {
 			Dur("duration", duration).
 			Str("remote_addr", r.RemoteAddr).
 			Msg("HTTP request")
+
+		metrics.RecordHTTPRequest(r.Method, r.URL.Path, wrapped.statusCode, duration.Seconds())
 	})
 }
 

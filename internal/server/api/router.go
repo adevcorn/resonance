@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/adevcorn/ensemble/internal/server/agent"
+	"github.com/adevcorn/ensemble/internal/server/metrics"
 	"github.com/adevcorn/ensemble/internal/server/orchestration"
 	"github.com/adevcorn/ensemble/internal/server/storage"
 	"github.com/adevcorn/ensemble/internal/server/tool"
@@ -65,6 +66,11 @@ func (s *Server) SetupRoutes() {
 
 	// Health check
 	api.HandleFunc("/health", s.handleHealth).Methods("GET")
+
+	// Metrics endpoint for Prometheus
+	api.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		metrics.GetMetricsHandler().ServeHTTP(w, r)
+	})
 }
 
 // Handler returns the HTTP handler

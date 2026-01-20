@@ -10,6 +10,7 @@ import (
 
 	"github.com/adevcorn/ensemble/internal/protocol"
 	"github.com/adevcorn/ensemble/internal/server/agent"
+	"github.com/adevcorn/ensemble/internal/server/metrics"
 	"github.com/adevcorn/ensemble/internal/server/provider"
 	"github.com/adevcorn/ensemble/internal/server/tool"
 )
@@ -30,6 +31,7 @@ type Engine struct {
 
 	// Collaboration tracking
 	pendingCollaboration map[string][]string // agent -> list of agents waiting for their response
+	maxMessages          int                 // maximum messages in conversation history
 }
 
 // RunResult contains the final result of orchestration
@@ -70,6 +72,7 @@ func NewEngine(
 		onMessage:            onMessage,
 		onToolCall:           onToolCall,
 		pendingCollaboration: make(map[string][]string),
+		maxMessages:          50,
 	}, nil
 }
 
@@ -158,13 +161,17 @@ func (e *Engine) HandleCollaboration(from string, input *protocol.CollaborateInp
 
 // Run executes a task with multi-agent collaboration
 func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.ProjectInfo) (*RunResult, error) {
+	metrics.RecordOrchestrationStart()
+
 	// Step 1: Analyze task and assemble team
+	teamAssemblyStart := time.Now()
 	team, err := e.coordinator.AnalyzeTask(ctx, task)
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze task: %w", err)
 	}
 
 	e.coordinator.SetActiveTeam(team)
+	metrics.RecordTeamAssemblyDuration(float64(time.Since(teamAssemblyStart)) / 1e9)
 
 	// Initialize conversation with user's task
 	messages := []protocol.Message{
@@ -193,7 +200,9 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 		currentTeam := e.coordinator.GetActiveTeam()
 
 		// Select next agent (considering pending collaborations)
+		moderatorStart := time.Now()
 		nextAgent, err := e.moderator.SelectNextAgent(ctx, currentTeam, messages, task, e.pendingCollaboration)
+		metrics.RecordModeratorDecisionDuration(float64(time.Since(moderatorStart)) / 1e9)
 		if err != nil {
 			return nil, fmt.Errorf("failed to select next agent: %w", err)
 		}
@@ -230,6 +239,13 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 		}
 		agentMessages = append(agentMessages, messages...)
 
+		// Measure context size
+		contextSize := len(agentMessages)
+		contextSizeTokens := metrics.EstimateTokenCount(selectedAgent.SystemPrompt())
+		for _, msg := range agentMessages {
+			contextSizeTokens += metrics.EstimateTokenCount(msg.Content)
+		}
+
 		// Get tools allowed for this agent
 		tools := e.registry.GetAllowed(selectedAgent)
 
@@ -248,8 +264,11 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 		// Collect response
 		var contentBuilder strings.Builder
 		var toolCalls []protocol.ToolCall
+		var inputTokens, outputTokens int
+		var lastEvent *provider.StreamEvent
 
 		for event := range eventChan {
+			lastEvent = &event
 			switch event.Type {
 			case provider.StreamEventContent:
 				contentBuilder.WriteString(event.Content)
@@ -272,8 +291,39 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 			Timestamp: time.Now(),
 		}
 
+		// Attach token usage from usage event
+		if lastEvent != nil && lastEvent.Usage != nil {
+			inputTokens = lastEvent.Usage.InputTokens
+			outputTokens = lastEvent.Usage.OutputTokens
+
+			agentMsg.Metadata = map[string]any{
+				"tokens": map[string]int{
+					"input_tokens":  inputTokens,
+					"output_tokens": outputTokens,
+					"total_tokens":  inputTokens + outputTokens,
+				},
+			}
+		}
+
 		// Add to conversation
 		messages = append(messages, agentMsg)
+
+		// Record token usage from the last message's usage if available
+		if agentMsg.Metadata != nil {
+			if usage, ok := agentMsg.Metadata["usage"].(map[string]interface{}); ok {
+				if input, ok := usage["input_tokens"].(float64); ok {
+					inputTokens = int(input)
+				}
+				if output, ok := usage["output_tokens"].(float64); ok {
+					outputTokens = int(output)
+				}
+			}
+		}
+
+		// Record turn metrics
+		turnStart := time.Now()
+		metrics.RecordTurn(nextAgent, "success", float64(time.Since(turnStart))/1e9, float64(inputTokens), float64(outputTokens))
+		metrics.RecordContextSize(nextAgent, contextSize, contextSizeTokens)
 
 		// Stream message to client
 		if e.onMessage != nil {
@@ -302,8 +352,22 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 					Timestamp:   time.Now(),
 				}
 				messages = append(messages, toolMsg)
-				fmt.Fprintf(os.Stderr, "[DEBUG] Added tool results message to conversation\n")
+
+				// Recalculate context size after adding tool results
+				contextSize = len(messages)
+				contextSizeTokens = 0
+				for _, msg := range messages {
+					contextSizeTokens += metrics.EstimateTokenCount(msg.Content)
+				}
+				metrics.RecordContextSize(nextAgent, contextSize, contextSizeTokens)
 			}
+		}
+
+		// Prune messages if we exceeded the limit
+		if len(messages) > e.maxMessages {
+			pruned := len(messages) - e.maxMessages
+			messages = messages[pruned:]
+			fmt.Fprintf(os.Stderr, "[DEBUG] Pruned %d messages to maintain max context size of %d\n", pruned, e.maxMessages)
 		}
 	}
 
@@ -313,6 +377,7 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 		return nil, fmt.Errorf("failed to synthesize results: %w", err)
 	}
 
+	metrics.RecordOrchestrationComplete("success")
 	return &RunResult{
 		Summary:   summary,
 		Artifacts: artifacts,

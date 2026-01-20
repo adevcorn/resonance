@@ -39,7 +39,7 @@ func TestModerator_SelectNextAgentFirstTurn(t *testing.T) {
 	team := []string{"coordinator", "developer"}
 	messages := []protocol.Message{}
 
-	nextAgent, err := mod.SelectNextAgent(ctx, team, messages, "Test task")
+	nextAgent, err := mod.SelectNextAgent(ctx, team, messages, "Test task", nil)
 	require.NoError(t, err)
 
 	// Should select coordinator for first turn
@@ -75,7 +75,7 @@ func TestModerator_SelectNextAgentWithMessages(t *testing.T) {
 		},
 	}
 
-	nextAgent, err := mod.SelectNextAgent(ctx, team, messages, "Build a feature")
+	nextAgent, err := mod.SelectNextAgent(ctx, team, messages, "Build a feature", nil)
 	require.NoError(t, err)
 
 	// Should get a valid team member or "complete"

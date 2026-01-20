@@ -123,6 +123,13 @@ func (p *Provider) Stream(ctx context.Context, req *provider.CompletionRequest) 
 				}
 			}
 
+			// Track token usage in event for later attachment to message
+			if chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
+				usage.InputTokens = int(chunk.Usage.PromptTokens)
+				usage.OutputTokens = int(chunk.Usage.CompletionTokens)
+				usage.TotalTokens = int(chunk.Usage.TotalTokens)
+			}
+
 			// Handle tool calls
 			if len(delta.ToolCalls) > 0 {
 				for _, tc := range delta.ToolCalls {
