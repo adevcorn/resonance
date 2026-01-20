@@ -27,12 +27,28 @@ async function handleCompletion(requestBody) {
   const { model, messages, tools, temperature, maxTokens } = requestBody;
   
   // Convert messages to AI SDK format
-  const formattedMessages = messages.map(msg => ({
-    role: msg.role === 'model' ? 'assistant' : msg.role,
-    content: msg.content,
-    ...(msg.toolCalls && { toolCalls: msg.toolCalls }),
-    ...(msg.toolResults && { toolResults: msg.toolResults })
-  }));
+  // The AI SDK expects: system, user, assistant (with optional toolCalls/toolResults)
+  // Tool results should be part of assistant messages, not separate "tool" role messages
+  const formattedMessages = messages
+    .filter(msg => msg.role !== 'tool')  // Filter out tool role messages
+    .map(msg => {
+      const formatted = {
+        role: msg.role === 'model' ? 'assistant' : msg.role,
+        content: msg.content || '',  // Ensure content is never undefined
+      };
+      
+      // Add tool calls if present
+      if (msg.toolCalls && msg.toolCalls.length > 0) {
+        formatted.toolCalls = msg.toolCalls;
+      }
+      
+      // Add tool results if present  
+      if (msg.toolResults && msg.toolResults.length > 0) {
+        formatted.toolResults = msg.toolResults;
+      }
+      
+      return formatted;
+    });
   
   // Convert tools to AI SDK format
   const formattedTools = tools ? tools.reduce((acc, tool) => {
