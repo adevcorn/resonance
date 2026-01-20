@@ -100,8 +100,8 @@ capabilities:
   - source_validation
 
 model:
-  provider: gemini
-  name: gemini-2.5-flash
+  provider: anthropic
+  name: claude-sonnet-4-20250514
   temperature: 0.6
   max_tokens: 8192
 
