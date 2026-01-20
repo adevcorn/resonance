@@ -1,0 +1,48 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+storage:
+  type: "json"
+  path: "./data"
+
+agents:
+  path: "./agents"
+  watch: true # Hot-reload enabled
+
+providers:
+  anthropic:
+    api_key: "${ANTHROPIC_API_KEY}"
+    default_model: "claude-sonnet-4-20250514"
+  openai:
+    api_key: "${OPENAI_API_KEY}"
+    default_model: "gpt-4o"
+  zai:
+    api_key: "${ZAI_API_KEY}"
+    base_url: "https://api.z.ai/v1" # Optional, defaults to this value
+    default_model: "glm-4"
+  gemini:
+    # Choose authentication method:
+    # Option 1: Direct API key (set use_cli: false or omit it)
+    api_key: "${GEMINI_API_KEY}"
+    # SDK models: gemini-2.0-flash-exp, gemini-2.0-flash-thinking-exp-01-21, gemini-2.0-pro-exp
+    # CLI models: gemini-3-pro-preview, gemini-3-flash-preview, gemini-2.5-pro, gemini-2.5-flash
+    default_model: "gemini-2.5-flash"
+
+    # Option 2: Use Gemini CLI with OAuth (recommended)
+    # Requires: npm install -g @google/gemini-cli && gemini (to authenticate)
+    # Then start the bridge: cd internal/server/provider/gemini/bridge && npm install && npm start
+    use_cli: true # Set to true to use CLI
+    bridge_url: "http://localhost:3001" # Node.js bridge URL
+  ollama:
+    host: "http://localhost:11434"
+    default_model: "llama3"
+
+defaults:
+  provider: "gemini" # Options: "anthropic", "openai", "gemini", "zai", "ollama"
+  temperature: 0.3
+  max_tokens: 8192
+
+logging:
+  level: "info"
+  format: "json"

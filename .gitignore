@@ -1,0 +1,36 @@
+# Binaries
+/bin/
+/ensemble
+/ensemble-server
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+/vendor/
+
+# Go workspace file
+go.work
+
+# Data directory
+/data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+# Local config files (contain secrets)
+config/*.local.yaml
