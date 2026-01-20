@@ -230,18 +230,54 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 		}
 
 		// Build conversation context for this agent
-		// Include system message with agent's role
+		// Include system message with agent's role and project context
+		systemPrompt := selectedAgent.SystemPrompt()
+
+		// Add project context if available
+		if projectInfo != nil && projectInfo.Path != "" {
+			projectContext := fmt.Sprintf(`
+
+## IMPORTANT: Current Project Context
+
+You are currently working in this project directory: %s`, projectInfo.Path)
+			if projectInfo.GitBranch != "" {
+				projectContext += fmt.Sprintf(`
+Git branch: %s`, projectInfo.GitBranch)
+			}
+			if projectInfo.Language != "" {
+				projectContext += fmt.Sprintf(`
+Language: %s`, projectInfo.Language)
+			}
+			if projectInfo.Framework != "" {
+				projectContext += fmt.Sprintf(`
+Framework: %s`, projectInfo.Framework)
+			}
+			projectContext += `
+
+**When the user asks about "this project", "the project", or asks what you're working on:**
+1. Use active_tool to search for "filesystem" or "read files" skills
+2. Load the filesystem-operations skill to learn how to read files
+3. Execute list_directory to see the project structure
+4. Execute read_file to read README.md or other relevant files
+5. Provide a comprehensive answer based on what you find
+
+DO NOT ask the user for clarification when they say "this project" - you have the tools to explore it yourself!`
+
+			// Prepend to system prompt so it's seen early
+			systemPrompt = projectContext + "\n\n---\n" + systemPrompt
+		}
+
 		agentMessages := []protocol.Message{
 			{
 				Role:    protocol.MessageRoleSystem,
-				Content: selectedAgent.SystemPrompt(),
+				Content: systemPrompt,
 			},
 		}
 		agentMessages = append(agentMessages, messages...)
 
 		// Measure context size
 		contextSize := len(agentMessages)
-		contextSizeTokens := metrics.EstimateTokenCount(selectedAgent.SystemPrompt())
+		contextSizeTokens := metrics.EstimateTokenCount(systemPrompt)
 		for _, msg := range agentMessages {
 			contextSizeTokens += metrics.EstimateTokenCount(msg.Content)
 		}
