@@ -44,7 +44,7 @@ func (a *AssembleTeamTool) Name() string {
 
 // Description returns the tool description
 func (a *AssembleTeamTool) Description() string {
-	return "Assemble a team of agents to work on the task. Select agents based on their specialties and the requirements of the task."
+	return "Assemble a team of agents to work on the task. REQUIRED: You MUST provide both 'agents' (array of agent names) and 'reason' (explanation). Example: {\"agents\": [\"developer\", \"tester\"], \"reason\": \"Need to implement and test a feature\"}. Select agents based on their specialties and the requirements of the task."
 }
 
 // Parameters returns the JSON Schema for assemble_team parameters
@@ -80,11 +80,12 @@ func (a *AssembleTeamTool) Execute(ctx context.Context, input json.RawMessage) (
 	}
 
 	if len(teamInput.Agents) == 0 {
-		return nil, fmt.Errorf("at least one agent must be specified")
+		// Return detailed error to help the LLM understand what went wrong
+		return nil, fmt.Errorf("at least one agent must be specified. You must provide an array of agent names. Example: {\"agents\": [\"developer\", \"tester\"], \"reason\": \"Need to implement and test a feature\"}")
 	}
 
 	if teamInput.Reason == "" {
-		return nil, fmt.Errorf("reason for team assembly must be provided")
+		return nil, fmt.Errorf("reason for team assembly must be provided. Include a brief explanation of why these agents were selected")
 	}
 
 	// Validate that all requested agents exist in the pool

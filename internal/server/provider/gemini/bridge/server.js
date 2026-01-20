@@ -52,6 +52,7 @@ async function handleCompletion(requestBody) {
   
   // Convert tools to AI SDK format
   const formattedTools = tools ? tools.reduce((acc, tool) => {
+    console.log(`[DEBUG] Tool ${tool.name} parameters:`, JSON.stringify(tool.parameters, null, 2));
     acc[tool.name] = {
       description: tool.description,
       // Parameters is already an object when sent from Go (json.RawMessage unmarshals)

@@ -137,7 +137,7 @@ capabilities:
 
 model:
   provider: gemini
-  name: gemini-2.5-flash
+  name: gemini-2.5-flash  # Flash variant - pro has same function calling issues
   temperature: 0.5
   max_tokens: 8192
 
