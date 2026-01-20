@@ -42,9 +42,17 @@ type StartPayload struct {
 
 // AgentMessagePayload is the payload for "agent_message" events
 type AgentMessagePayload struct {
-	Agent     string    `json:"agent"`
-	Content   string    `json:"content"`
-	Timestamp time.Time `json:"timestamp"`
+	Agent     string            `json:"agent"`
+	Content   string            `json:"content"`
+	Timestamp time.Time         `json:"timestamp"`
+	Tokens    *MessageTokenInfo `json:"tokens,omitempty"`
+}
+
+// MessageTokenInfo contains token usage information
+type MessageTokenInfo struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
 }
 
 // ToolCallPayload is the payload for "tool_call" events
@@ -132,12 +140,24 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				s.registry,
 				func(msg protocol.Message) error {
 					// Stream agent messages to client
+					tokenInfo := &MessageTokenInfo{}
+					if msg.Metadata != nil {
+						if tokens, ok := msg.Metadata["tokens"].(map[string]interface{}); ok {
+							tokenInfo = &MessageTokenInfo{
+								InputTokens:  int(tokens["input_tokens"].(float64)),
+								OutputTokens: int(tokens["output_tokens"].(float64)),
+								TotalTokens:  int(tokens["total_tokens"].(float64)),
+							}
+						}
+					}
+
 					return conn.WriteJSON(WSServerMessage{
 						Type: "agent_message",
 						Payload: AgentMessagePayload{
 							Agent:     msg.Agent,
 							Content:   msg.Content,
 							Timestamp: msg.Timestamp,
+							Tokens:    tokenInfo,
 						},
 					})
 				},

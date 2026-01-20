@@ -266,6 +266,40 @@ func formatToolAction(tc protocol.ToolCall) string {
 		}
 		return "Assembling team"
 
+	case "active_tool":
+		action, _ := args["action"].(string)
+		switch action {
+		case "search_skills":
+			if query, ok := args["query"].(string); ok {
+				return fmt.Sprintf("Searching skills: %s", query)
+			}
+			return "Searching for skills"
+		case "load_skill":
+			if skillName, ok := args["skill_name"].(string); ok {
+				return fmt.Sprintf("Loading skill: %s", skillName)
+			}
+			return "Loading skill"
+		case "execute":
+			if capability, ok := args["capability"].(string); ok {
+				// Try to get parameter details for common capabilities
+				if params, ok := args["parameters"].(map[string]interface{}); ok {
+					if path, ok := params["path"].(string); ok && capability == "read_file" {
+						return fmt.Sprintf("Reading file: %s", path)
+					}
+					if path, ok := params["path"].(string); ok && capability == "list_directory" {
+						if path == "." {
+							return "Listing project files"
+						}
+						return fmt.Sprintf("Listing directory: %s", path)
+					}
+				}
+				return fmt.Sprintf("Executing: %s", capability)
+			}
+			return "Executing capability"
+		default:
+			return "Using active_tool"
+		}
+
 	default:
 		return fmt.Sprintf("Using %s", tc.ToolName)
 	}
@@ -350,6 +384,19 @@ func formatToolResult(toolName string, result protocol.ToolResult) string {
 	case "assemble_team":
 		if team, ok := resultData["team"].([]interface{}); ok {
 			return fmt.Sprintf("✅ Assembled %d agents", len(team))
+		}
+		return "✅ Done"
+
+	case "active_tool":
+		// Try to provide more specific feedback based on result
+		if skills, ok := resultData["skills"].([]interface{}); ok {
+			return fmt.Sprintf("✅ Found %d skills", len(skills))
+		}
+		if instructions, ok := resultData["instructions"].(string); ok && len(instructions) > 0 {
+			return "✅ Skill loaded"
+		}
+		if resultData["content"] != nil || resultData["files"] != nil {
+			return "✅ Done"
 		}
 		return "✅ Done"
 

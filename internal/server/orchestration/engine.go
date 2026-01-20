@@ -10,6 +10,7 @@ import (
 
 	"github.com/adevcorn/ensemble/internal/protocol"
 	"github.com/adevcorn/ensemble/internal/server/agent"
+	"github.com/adevcorn/ensemble/internal/server/metrics"
 	"github.com/adevcorn/ensemble/internal/server/provider"
 	"github.com/adevcorn/ensemble/internal/server/tool"
 )
@@ -30,6 +31,7 @@ type Engine struct {
 
 	// Collaboration tracking
 	pendingCollaboration map[string][]string // agent -> list of agents waiting for their response
+	maxMessages          int                 // maximum messages in conversation history
 }
 
 // RunResult contains the final result of orchestration
@@ -70,6 +72,7 @@ func NewEngine(
 		onMessage:            onMessage,
 		onToolCall:           onToolCall,
 		pendingCollaboration: make(map[string][]string),
+		maxMessages:          50,
 	}, nil
 }
 
@@ -158,13 +161,17 @@ func (e *Engine) HandleCollaboration(from string, input *protocol.CollaborateInp
 
 // Run executes a task with multi-agent collaboration
 func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.ProjectInfo) (*RunResult, error) {
+	metrics.RecordOrchestrationStart()
+
 	// Step 1: Analyze task and assemble team
+	teamAssemblyStart := time.Now()
 	team, err := e.coordinator.AnalyzeTask(ctx, task)
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze task: %w", err)
 	}
 
 	e.coordinator.SetActiveTeam(team)
+	metrics.RecordTeamAssemblyDuration(float64(time.Since(teamAssemblyStart)) / 1e9)
 
 	// Initialize conversation with user's task
 	messages := []protocol.Message{
@@ -193,7 +200,9 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 		currentTeam := e.coordinator.GetActiveTeam()
 
 		// Select next agent (considering pending collaborations)
+		moderatorStart := time.Now()
 		nextAgent, err := e.moderator.SelectNextAgent(ctx, currentTeam, messages, task, e.pendingCollaboration)
+		metrics.RecordModeratorDecisionDuration(float64(time.Since(moderatorStart)) / 1e9)
 		if err != nil {
 			return nil, fmt.Errorf("failed to select next agent: %w", err)
 		}
@@ -221,14 +230,54 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 		}
 
 		// Build conversation context for this agent
-		// Include system message with agent's role
+		// Include system message with agent's role and project context
+		systemPrompt := selectedAgent.SystemPrompt()
+
+		// Add project context if available
+		if projectInfo != nil && projectInfo.Path != "" {
+			projectContext := fmt.Sprintf(`
+
+## ⚠️ CRITICAL PROJECT CONTEXT ⚠️
+
+**WORKING DIRECTORY:** %s
+**GIT BRANCH:** %s
+**LANGUAGE:** %s
+**FRAMEWORK:** %s
+
+### MANDATORY BEHAVIOR WHEN USER ASKS ABOUT "THIS PROJECT", "THE PROJECT", OR "WHAT IS THIS":
+
+YOU MUST IMMEDIATELY USE YOUR TOOLS TO EXPLORE THE PROJECT. DO NOT ASK THE USER FOR CLARIFICATION.
+
+**REQUIRED STEPS:**
+1. FIRST: Call active_tool with action="search_skills" and query="read files" or "filesystem"
+2. THEN: Call active_tool with action="load_skill" and skill_name="filesystem-operations" 
+3. THEN: Call active_tool with action="execute", capability="read_file", parameters={"path": "README.md"}
+   OR call active_tool with action="execute", capability="list_directory", parameters={"path": "."}
+4. FINALLY: Answer based on what you found in the files
+
+This is NOT optional. You have filesystem access. USE IT.
+
+---
+`, projectInfo.Path, projectInfo.GitBranch, projectInfo.Language, projectInfo.Framework)
+
+			// Prepend to system prompt so it's seen FIRST
+			systemPrompt = projectContext + systemPrompt
+		}
+
 		agentMessages := []protocol.Message{
 			{
 				Role:    protocol.MessageRoleSystem,
-				Content: selectedAgent.SystemPrompt(),
+				Content: systemPrompt,
 			},
 		}
 		agentMessages = append(agentMessages, messages...)
+
+		// Measure context size
+		contextSize := len(agentMessages)
+		contextSizeTokens := metrics.EstimateTokenCount(systemPrompt)
+		for _, msg := range agentMessages {
+			contextSizeTokens += metrics.EstimateTokenCount(msg.Content)
+		}
 
 		// Get tools allowed for this agent
 		tools := e.registry.GetAllowed(selectedAgent)
@@ -248,6 +297,8 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 		// Collect response
 		var contentBuilder strings.Builder
 		var toolCalls []protocol.ToolCall
+		var inputTokens, outputTokens int
+		var usage *provider.Usage
 
 		for event := range eventChan {
 			switch event.Type {
@@ -256,6 +307,11 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 			case provider.StreamEventToolCall:
 				if event.ToolCall != nil {
 					toolCalls = append(toolCalls, *event.ToolCall)
+				}
+			case provider.StreamEventDone:
+				// Capture usage from the done event
+				if event.Usage != nil {
+					usage = event.Usage
 				}
 			case provider.StreamEventError:
 				return nil, fmt.Errorf("stream error from agent %s: %w", nextAgent, event.Error)
@@ -272,8 +328,39 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 			Timestamp: time.Now(),
 		}
 
+		// Attach token usage from done event
+		if usage != nil {
+			inputTokens = usage.InputTokens
+			outputTokens = usage.OutputTokens
+
+			agentMsg.Metadata = map[string]any{
+				"tokens": map[string]int{
+					"input_tokens":  inputTokens,
+					"output_tokens": outputTokens,
+					"total_tokens":  inputTokens + outputTokens,
+				},
+			}
+		}
+
 		// Add to conversation
 		messages = append(messages, agentMsg)
+
+		// Record token usage from the last message's usage if available
+		if agentMsg.Metadata != nil {
+			if usage, ok := agentMsg.Metadata["usage"].(map[string]interface{}); ok {
+				if input, ok := usage["input_tokens"].(float64); ok {
+					inputTokens = int(input)
+				}
+				if output, ok := usage["output_tokens"].(float64); ok {
+					outputTokens = int(output)
+				}
+			}
+		}
+
+		// Record turn metrics
+		turnStart := time.Now()
+		metrics.RecordTurn(nextAgent, "success", float64(time.Since(turnStart))/1e9, float64(inputTokens), float64(outputTokens))
+		metrics.RecordContextSize(nextAgent, contextSize, contextSizeTokens)
 
 		// Stream message to client
 		if e.onMessage != nil {
@@ -302,8 +389,22 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 					Timestamp:   time.Now(),
 				}
 				messages = append(messages, toolMsg)
-				fmt.Fprintf(os.Stderr, "[DEBUG] Added tool results message to conversation\n")
+
+				// Recalculate context size after adding tool results
+				contextSize = len(messages)
+				contextSizeTokens = 0
+				for _, msg := range messages {
+					contextSizeTokens += metrics.EstimateTokenCount(msg.Content)
+				}
+				metrics.RecordContextSize(nextAgent, contextSize, contextSizeTokens)
 			}
+		}
+
+		// Prune messages if we exceeded the limit
+		if len(messages) > e.maxMessages {
+			pruned := len(messages) - e.maxMessages
+			messages = messages[pruned:]
+			fmt.Fprintf(os.Stderr, "[DEBUG] Pruned %d messages to maintain max context size of %d\n", pruned, e.maxMessages)
 		}
 	}
 
@@ -313,6 +414,7 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 		return nil, fmt.Errorf("failed to synthesize results: %w", err)
 	}
 
+	metrics.RecordOrchestrationComplete("success")
 	return &RunResult{
 		Summary:   summary,
 		Artifacts: artifacts,

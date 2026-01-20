@@ -99,7 +99,9 @@ func (p *Provider) Stream(ctx context.Context, req *provider.CompletionRequest) 
 
 	go func() {
 		defer close(eventChan)
-		defer stream.Close()
+		if stream != nil {
+			defer stream.Close()
+		}
 
 		var currentContent string
 		var currentToolCalls []protocol.ToolCall
@@ -180,10 +182,16 @@ func (p *Provider) Stream(ctx context.Context, req *provider.CompletionRequest) 
 				}
 
 			case anthropic.MessageDeltaEvent:
-				usage.OutputTokens = int(event.Usage.OutputTokens)
+				// Track usage in event for later attachment to message
+				if event.Usage.OutputTokens > 0 {
+					usage.OutputTokens = int(event.Usage.OutputTokens)
+				}
 
 			case anthropic.MessageStartEvent:
-				usage.InputTokens = int(event.Message.Usage.InputTokens)
+				// Track usage in event for later attachment to message
+				if event.Message.Usage.InputTokens > 0 {
+					usage.InputTokens = int(event.Message.Usage.InputTokens)
+				}
 
 			case anthropic.MessageStopEvent:
 				// Stream completed

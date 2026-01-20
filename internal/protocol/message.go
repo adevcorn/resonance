@@ -23,6 +23,7 @@ type Message struct {
 	ToolResults []ToolResult   `json:"tool_results,omitempty"`
 	Timestamp   time.Time      `json:"timestamp"`
 	Metadata    map[string]any `json:"metadata,omitempty"`
+	Tokens      *Usage         `json:"tokens,omitempty"`
 }
 
 // ConversationContext holds the shared context for all agents in a session
@@ -41,4 +42,11 @@ type ProjectInfo struct {
 	Language  string            `json:"language,omitempty"`
 	Framework string            `json:"framework,omitempty"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
+}
+
+// Usage contains token usage information from LLM providers
+type Usage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
 }
