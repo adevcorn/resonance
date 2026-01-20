@@ -107,10 +107,7 @@ model:
 
 tools:
   allowed:
-    - read_file
-    - list_directory
-    - web_search
-    - fetch_url
+    - active_tool
     - collaborate
   denied:
     - write_file

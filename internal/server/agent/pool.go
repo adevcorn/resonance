@@ -12,16 +12,31 @@ import (
 
 // Pool manages runtime agent instances
 type Pool struct {
-	mu       sync.RWMutex
-	agents   map[string]*Agent
-	registry *provider.Registry
+	mu            sync.RWMutex
+	agents        map[string]*Agent
+	registry      *provider.Registry
+	skillRegistry SkillRegistry
 }
 
 // NewPool creates a new agent pool
 func NewPool(registry *provider.Registry) *Pool {
 	return &Pool{
-		agents:   make(map[string]*Agent),
-		registry: registry,
+		agents:        make(map[string]*Agent),
+		registry:      registry,
+		skillRegistry: nil,
+	}
+}
+
+// SetSkillRegistry sets the skill registry for the pool
+func (p *Pool) SetSkillRegistry(registry SkillRegistry) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.skillRegistry = registry
+
+	// Update all existing agents
+	for _, agent := range p.agents {
+		agent.SetSkillRegistry(registry)
 	}
 }
 
@@ -42,6 +57,12 @@ func (p *Pool) Load(definitions []*protocol.AgentDefinition) error {
 
 		// Create agent instance
 		agent := NewAgent(def, prov)
+
+		// Set skill registry if available
+		if p.skillRegistry != nil {
+			agent.SetSkillRegistry(p.skillRegistry)
+		}
+
 		p.agents[def.Name] = agent
 	}
 
@@ -162,6 +183,12 @@ func (p *Pool) Reload(def *protocol.AgentDefinition) error {
 
 	// Create new agent instance
 	agent := NewAgent(def, prov)
+
+	// Set skill registry if available
+	if p.skillRegistry != nil {
+		agent.SetSkillRegistry(p.skillRegistry)
+	}
+
 	p.agents[def.Name] = agent
 
 	return nil

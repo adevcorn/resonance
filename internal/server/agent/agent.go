@@ -7,18 +7,30 @@ import (
 	"github.com/adevcorn/ensemble/internal/server/provider"
 )
 
+// SkillRegistry interface for getting skill metadata
+type SkillRegistry interface {
+	GetAvailableSkillsXML(agentName string) string
+}
+
 // Agent represents a runtime agent instance
 type Agent struct {
-	definition *protocol.AgentDefinition
-	provider   provider.Provider
+	definition    *protocol.AgentDefinition
+	provider      provider.Provider
+	skillRegistry SkillRegistry
 }
 
 // NewAgent creates a new agent with the given definition and provider
 func NewAgent(def *protocol.AgentDefinition, prov provider.Provider) *Agent {
 	return &Agent{
-		definition: def,
-		provider:   prov,
+		definition:    def,
+		provider:      prov,
+		skillRegistry: nil, // Set later via SetSkillRegistry
 	}
+}
+
+// SetSkillRegistry sets the skill registry for this agent
+func (a *Agent) SetSkillRegistry(registry SkillRegistry) {
+	a.skillRegistry = registry
 }
 
 // Name returns the agent's internal name
@@ -41,9 +53,20 @@ func (a *Agent) Capabilities() []string {
 	return a.definition.Capabilities
 }
 
-// SystemPrompt returns the agent's system prompt
+// SystemPrompt returns the agent's system prompt with skills injected
 func (a *Agent) SystemPrompt() string {
-	return a.definition.SystemPrompt
+	prompt := a.definition.SystemPrompt
+
+	// Inject skill metadata if available
+	if a.skillRegistry != nil && len(a.definition.Skills) > 0 {
+		skillsXML := a.skillRegistry.GetAvailableSkillsXML(a.definition.Name)
+		if skillsXML != "" {
+			prompt += "\n\n" + skillsXML + "\n\n"
+			prompt += "You can activate any of these skills using the activate_skill tool when you need detailed guidance."
+		}
+	}
+
+	return prompt
 }
 
 // HasTool checks if a tool is in the agent's allowed list

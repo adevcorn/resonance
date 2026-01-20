@@ -97,8 +97,7 @@ model:
 
 tools:
   allowed:
-    - read_file
-    - list_directory
+    - active_tool
     - collaborate
   denied:
     - write_file

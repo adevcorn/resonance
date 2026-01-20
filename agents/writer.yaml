@@ -141,9 +141,7 @@ model:
 
 tools:
   allowed:
-    - read_file
-    - write_file
-    - list_directory
+    - active_tool
     - collaborate
   denied:
     - execute_command
