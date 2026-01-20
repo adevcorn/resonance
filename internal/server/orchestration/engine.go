@@ -237,34 +237,31 @@ func (e *Engine) Run(ctx context.Context, task string, projectInfo *protocol.Pro
 		if projectInfo != nil && projectInfo.Path != "" {
 			projectContext := fmt.Sprintf(`
 
-## IMPORTANT: Current Project Context
+## ⚠️ CRITICAL PROJECT CONTEXT ⚠️
 
-You are currently working in this project directory: %s`, projectInfo.Path)
-			if projectInfo.GitBranch != "" {
-				projectContext += fmt.Sprintf(`
-Git branch: %s`, projectInfo.GitBranch)
-			}
-			if projectInfo.Language != "" {
-				projectContext += fmt.Sprintf(`
-Language: %s`, projectInfo.Language)
-			}
-			if projectInfo.Framework != "" {
-				projectContext += fmt.Sprintf(`
-Framework: %s`, projectInfo.Framework)
-			}
-			projectContext += `
+**WORKING DIRECTORY:** %s
+**GIT BRANCH:** %s
+**LANGUAGE:** %s
+**FRAMEWORK:** %s
 
-**When the user asks about "this project", "the project", or asks what you're working on:**
-1. Use active_tool to search for "filesystem" or "read files" skills
-2. Load the filesystem-operations skill to learn how to read files
-3. Execute list_directory to see the project structure
-4. Execute read_file to read README.md or other relevant files
-5. Provide a comprehensive answer based on what you find
+### MANDATORY BEHAVIOR WHEN USER ASKS ABOUT "THIS PROJECT", "THE PROJECT", OR "WHAT IS THIS":
 
-DO NOT ask the user for clarification when they say "this project" - you have the tools to explore it yourself!`
+YOU MUST IMMEDIATELY USE YOUR TOOLS TO EXPLORE THE PROJECT. DO NOT ASK THE USER FOR CLARIFICATION.
 
-			// Prepend to system prompt so it's seen early
-			systemPrompt = projectContext + "\n\n---\n" + systemPrompt
+**REQUIRED STEPS:**
+1. FIRST: Call active_tool with action="search_skills" and query="read files" or "filesystem"
+2. THEN: Call active_tool with action="load_skill" and skill_name="filesystem-operations" 
+3. THEN: Call active_tool with action="execute", capability="read_file", parameters={"path": "README.md"}
+   OR call active_tool with action="execute", capability="list_directory", parameters={"path": "."}
+4. FINALLY: Answer based on what you found in the files
+
+This is NOT optional. You have filesystem access. USE IT.
+
+---
+`, projectInfo.Path, projectInfo.GitBranch, projectInfo.Language, projectInfo.Framework)
+
+			// Prepend to system prompt so it's seen FIRST
+			systemPrompt = projectContext + systemPrompt
 		}
 
 		agentMessages := []protocol.Message{

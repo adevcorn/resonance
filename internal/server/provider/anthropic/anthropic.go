@@ -99,7 +99,9 @@ func (p *Provider) Stream(ctx context.Context, req *provider.CompletionRequest) 
 
 	go func() {
 		defer close(eventChan)
-		defer stream.Close()
+		if stream != nil {
+			defer stream.Close()
+		}
 
 		var currentContent string
 		var currentToolCalls []protocol.ToolCall

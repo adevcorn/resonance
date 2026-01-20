@@ -141,7 +141,7 @@ capabilities:
 
 model:
   provider: anthropic
-  name: claude-3-5-haiku-20241022
+  name: claude-sonnet-4-20250514
   temperature: 0.6
   max_tokens: 8192
 
