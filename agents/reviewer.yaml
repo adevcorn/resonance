@@ -78,6 +78,26 @@ system_prompt: |
   - Provide actionable, prioritized feedback
   - Recognize good work, not just problems
   
+  ## Using Active Tool
+  
+  You have access to `active_tool` for code review:
+  
+  **To read and analyze code:**
+  ```json
+  {"action": "search_skills", "query": "read files list directory"}
+  {"action": "load_skill", "skill_name": "filesystem-operations"}
+  {"action": "execute", "capability": "read_file", "parameters": {"path": "src/main.go"}}
+  {"action": "execute", "capability": "list_directory", "parameters": {"path": "src", "recursive": true}}
+  ```
+  
+  **To understand git history:**
+  ```json
+  {"action": "search_skills", "query": "git"}
+  {"action": "load_skill", "skill_name": "git-workflow"}
+  ```
+  
+  Always search for skills to learn proper usage before executing capabilities.
+  
   Be thorough but fair. The goal is to ship high-quality code, not to find fault. Your reviews 
   make the codebase better and help the team grow.
 
@@ -97,8 +117,7 @@ model:
 
 tools:
   allowed:
-    - read_file
-    - list_directory
+    - active_tool
     - collaborate
   denied:
     - write_file

@@ -13,12 +13,14 @@ import (
 	"github.com/adevcorn/ensemble/internal/protocol"
 	"github.com/adevcorn/ensemble/internal/server/agent"
 	"github.com/adevcorn/ensemble/internal/server/api"
+	"github.com/adevcorn/ensemble/internal/server/capability"
 	"github.com/adevcorn/ensemble/internal/server/orchestration"
 	"github.com/adevcorn/ensemble/internal/server/provider"
 	"github.com/adevcorn/ensemble/internal/server/provider/anthropic"
 	"github.com/adevcorn/ensemble/internal/server/provider/gemini"
 	"github.com/adevcorn/ensemble/internal/server/provider/openai"
 	"github.com/adevcorn/ensemble/internal/server/provider/zai"
+	"github.com/adevcorn/ensemble/internal/server/skill"
 	"github.com/adevcorn/ensemble/internal/server/storage"
 	"github.com/adevcorn/ensemble/internal/server/tool"
 	"github.com/rs/zerolog"
@@ -165,6 +167,29 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	log.Info().Int("count", agentPool.Count()).Msg("Agents loaded")
 
+	// 4a. Initialize skill registry
+	skillsPath := "./skills"
+	skillRegistry, err := skill.NewRegistry(skillsPath)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to initialize skill registry, continuing without skills")
+		skillRegistry = nil
+	} else {
+		log.Info().Int("count", len(skillRegistry.ListSkills())).Msg("Skills loaded")
+
+		// Register agent skills based on their definitions
+		for _, def := range definitions {
+			if len(def.Skills) > 0 {
+				if err := skillRegistry.RegisterAgentSkills(def.Name, def.Skills); err != nil {
+					log.Warn().Str("agent", def.Name).Err(err).Msg("Failed to register agent skills")
+				}
+			}
+		}
+
+		// Wire skill registry to agent pool
+		agentPool.SetSkillRegistry(skillRegistry)
+		log.Info().Msg("Skill registry connected to agent pool")
+	}
+
 	// Start hot-reload watcher if enabled
 	if cfg.Agents.Watch {
 		watcher, err := agent.NewWatcher(loader, agentPool, true)
@@ -176,8 +201,36 @@ func runServer(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 5. Setup tool registry
+	// 5. Setup capability registry
+	capabilityRegistry := capability.NewRegistry()
+
+	// Get current working directory for file operations
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to get working directory, using '.'")
+		cwd = "."
+	}
+
+	// Register filesystem capabilities
+	capabilityRegistry.Register(capability.NewReadFileCapability(cwd))
+	capabilityRegistry.Register(capability.NewWriteFileCapability())
+	capabilityRegistry.Register(capability.NewListDirectoryCapability(cwd))
+
+	// Register shell capability
+	capabilityRegistry.Register(capability.NewExecuteCommandCapability())
+
+	// Register web capabilities
+	capabilityRegistry.Register(capability.NewFetchURLCapability())
+	capabilityRegistry.Register(capability.NewWebSearchCapability())
+
+	log.Info().Int("count", capabilityRegistry.Count()).Msg("Capabilities registered")
+
+	// 6. Setup tool registry
 	toolRegistry := tool.NewRegistry()
+
+	// Register active_tool (unified interface to all capabilities)
+	activeTool := tool.NewActiveTool(skillRegistry, capabilityRegistry)
+	toolRegistry.Register(activeTool)
 
 	// Register collaborate tool
 	// Note: Actual handling done in orchestration engine's HandleCollaboration method
@@ -194,38 +247,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 	})
 	toolRegistry.Register(assembleTeamTool)
 
-	// Register file system tools
-	// Use current working directory as base for file operations
-	cwd, err := os.Getwd()
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get working directory, using '.'")
-		cwd = "."
-	}
+	log.Info().Int("count", toolRegistry.Count()).Msg("Server tools registered (active_tool + collaborate + assemble_team)")
 
-	readFileTool := tool.NewReadFileTool(cwd)
-	toolRegistry.Register(readFileTool)
-
-	// Register write_file as a client-side tool (executed on client, schema provided by server)
-	writeFileTool := tool.NewWriteFileTool()
-	toolRegistry.Register(writeFileTool)
-
-	// Register execute_command as a client-side tool
-	executeCommandTool := tool.NewExecuteCommandTool()
-	toolRegistry.Register(executeCommandTool)
-
-	listDirectoryTool := tool.NewListDirectoryTool(cwd)
-	toolRegistry.Register(listDirectoryTool)
-
-	// Register web tools
-	fetchURLTool := tool.NewFetchURLTool()
-	toolRegistry.Register(fetchURLTool)
-
-	webSearchTool := tool.NewWebSearchTool()
-	toolRegistry.Register(webSearchTool)
-
-	log.Info().Int("count", toolRegistry.Count()).Msg("Server tools registered")
-
-	// 6. Initialize storage
+	// 7. Initialize storage
 	storagePath := cfg.Storage.Path
 	if storagePath == "" {
 		storagePath = "./data"
@@ -239,7 +263,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	sessionManager := storage.NewSessionManager(jsonStorage)
 	log.Info().Str("path", storagePath).Msg("Storage initialized")
 
-	// 7. Create orchestration engine
+	// 8. Create orchestration engine
 	// Note: For now we create a simplified engine without streaming callbacks
 	// In production, we'd need to refactor the engine to support per-session callbacks
 	engine, err := orchestration.NewEngine(

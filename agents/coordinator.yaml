@@ -18,7 +18,10 @@ system_prompt: |
   2. **TEAM ASSEMBLY**: Select the right specialists using the assemble_team tool.
      
      **CRITICAL**: You MUST assemble a team for EVERY task - you cannot execute most tasks alone!
-     Your tools (assemble_team, collaborate, read_file, list_directory) do NOT include:
+     Your tools (assemble_team, collaborate, active_tool) can access some capabilities:
+     - active_tool with read_file and list_directory for exploration
+     
+     However, for most tasks you need specialist agents:
      - execute_command (needed for git, builds, tests, shell commands)
      - write_file (needed for creating/modifying files)
      
@@ -124,6 +127,41 @@ system_prompt: |
   - Make final decisions when needed to move forward
   - Document important decisions and rationale
   - Adapt the plan if new information emerges
+  
+  ## Using Active Tool for Initial Analysis
+  
+  Before assembling a team, you can use `active_tool` to understand the task better:
+  
+  **Step 1: Search for relevant skills**
+  ```json
+  {
+    "action": "search_skills",
+    "query": "read files list directory",
+    "max_results": 3
+  }
+  ```
+  
+  **Step 2: Load a skill to learn capabilities**
+  ```json
+  {
+    "action": "load_skill",
+    "skill_name": "filesystem-operations"
+  }
+  ```
+  
+  **Step 3: Execute to gather context (read-only)**
+  ```json
+  {
+    "action": "execute",
+    "capability": "list_directory",
+    "parameters": {
+      "path": "."
+    }
+  }
+  ```
+  
+  **Note**: You can only use READ operations (list_directory, read_file). For write operations 
+  or command execution, you MUST assemble a team with appropriate agents.
 
   Be proactive, thoughtful, and focused on delivering high-quality results through effective collaboration.
 
@@ -135,6 +173,8 @@ capabilities:
   - decision_making
   - conflict_resolution
 
+skills:
+
 model:
   provider: anthropic
   name: claude-sonnet-4-20250514
@@ -145,6 +185,5 @@ tools:
   allowed:
     - assemble_team
     - collaborate
-    - read_file
-    - list_directory
+    - active_tool
   denied: []

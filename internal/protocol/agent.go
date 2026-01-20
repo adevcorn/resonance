@@ -9,6 +9,7 @@ type AgentDefinition struct {
 	Capabilities []string    `yaml:"capabilities" json:"capabilities"`
 	Model        ModelConfig `yaml:"model" json:"model"`
 	Tools        ToolsConfig `yaml:"tools" json:"tools"`
+	Skills       []string    `yaml:"skills,omitempty" json:"skills,omitempty"`
 }
 
 // ModelConfig defines the LLM model configuration for an agent
